@@ -15,6 +15,8 @@ const state = {
   boards: [],
   posts: [],
   followedArtistsByFan: {},
+  shelves: [],
+  nextShelfId: 1,
   postDrafts: {},
   activeAccountId: null,
   route: getRoute(),
@@ -50,6 +52,18 @@ const state = {
   postStatus: null,
   deleteConfirmPostId: null,
   followStatus: null,
+  shelfDraft: null,
+  shelfErrors: {},
+  shelfLoading: false,
+  shelfTimer: null,
+  pendingShelf: null,
+  shelfPickerPostId: null,
+  shelfPickerSelection: [],
+  shelfPickerError: '',
+  shelfReturnPostId: null,
+  shelfReturnRoute: null,
+  shelfDeleteConfirmId: null,
+  shelfStatus: null,
 };
 
 const iconPaths = {
@@ -95,6 +109,7 @@ function hrefFor(path) {
 function navigate(path, { replace = false } = {}) {
   if (state.loading && path !== state.route) cancelRegistration();
   if (state.boardLoading && path !== state.route) cancelBoardOperation();
+  if (state.shelfLoading && path !== state.route) cancelShelfOperation();
   if (replace) history.replaceState({}, '', hrefFor(path));
   else if (getRoute() !== path) history.pushState({}, '', hrefFor(path));
   state.route = path;
@@ -113,6 +128,15 @@ function cancelBoardOperation() {
   state.boardTimer = null;
   state.boardLoading = false;
   state.pendingBoard = null;
+}
+
+function cancelShelfOperation() {
+  if (state.shelfTimer) window.clearTimeout(state.shelfTimer);
+  state.shelfTimer = null;
+  state.shelfLoading = false;
+  state.pendingShelf = null;
+  state.shelfReturnPostId = null;
+  state.shelfReturnRoute = null;
 }
 
 function activeAccount() {
@@ -276,6 +300,7 @@ function navLink(item, currentRoute) {
     || (item.path === '/home' && currentRoute === '/')
     || (item.path === '/artists' && currentRoute.startsWith('/artists/'))
     || (item.path === '/explore' && currentRoute.startsWith('/board/'))
+    || (item.path === '/shelves' && currentRoute.startsWith('/shelves/'))
     || (item.path === '/profile' && currentRoute.startsWith('/profile/'));
   return `<a class="nav-link" href="${hrefFor(item.path)}" data-route="${item.path}" ${active ? 'aria-current="page"' : ''}>${icon(item.icon)}<span>${item.label}</span></a>`;
 }
@@ -302,12 +327,37 @@ function renderShell(content, pageTitle) {
       <header class="topbar"><span class="topbar-title">${escapeHTML(pageTitle)}</span><div class="topbar-actions">${searchControl}<a class="icon-button" href="${hrefFor('/profile')}" data-route="/profile" aria-label="Open profile">${icon('profile', 17)}</a><button class="logout-button" type="button" data-action="logout" aria-label="Log out">${icon('logout', 15)}<span>Log out</span></button></div></header>
       <main class="page-content page-enter">${content}</main>
     </div>
+    ${renderShelfPicker()}
     <nav class="mobile-nav" aria-label="Main navigation">${nav}</nav>
   </div>`;
 }
 
 function renderEmpty(title, copy = '') {
   return `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon('bookmark', 17)}</span><p class="empty-title">${title}</p>${copy ? `<p class="empty-copy">${copy}</p>` : ''}</div></div>`;
+}
+
+function renderShelfPicker() {
+  const postId = state.shelfPickerPostId;
+  if (!postId) return '';
+  const account = activeAccount();
+  const post = state.posts.find((entry) => entry.id === postId && isVisibleFanPost(entry));
+  const shelves = state.shelves.filter((shelf) => shelf.ownerId === account?.id);
+  const preview = post
+    ? escapeHTML(post.content?.trim().slice(0, 130) || (post.media?.type === 'video' ? 'Video post' : post.media?.type === 'image' ? 'Image post' : 'Fan post'))
+    : 'This post is no longer available.';
+  const disabled = state.shelfLoading ? 'disabled' : '';
+  const checkboxes = shelves.map((shelf) => `<label class="shelf-picker-option"><input type="checkbox" name="shelfIds" value="${escapeHTML(shelf.id)}" ${state.shelfPickerSelection.includes(shelf.id) ? 'checked' : ''} ${disabled}><span><span class="shelf-picker-title">${escapeHTML(shelf.title)}</span><span class="shelf-picker-visibility">${shelf.visibility === 'public' ? 'Public' : 'Private'}</span></span></label>`).join('');
+  return `<div class="shelf-modal-backdrop">
+    <section class="shelf-picker" role="dialog" aria-modal="true" aria-labelledby="shelf-picker-title">
+      <div class="shelf-picker-head"><div><p class="eyebrow">Keep close</p><h2 class="shelf-picker-heading" id="shelf-picker-title">Add to Shelf</h2></div><button class="icon-button" type="button" data-action="close-shelf-picker" aria-label="Close Shelf picker" ${disabled}>${icon('close', 17)}</button></div>
+      <p class="shelf-picker-post">${preview}</p>
+      ${state.shelfPickerError ? `<p class="inline-error" role="alert">${escapeHTML(state.shelfPickerError)}</p>` : ''}
+      ${!post ? renderEmpty('Post unavailable.') : shelves.length ? `<form data-form="shelf-picker" data-post-id="${escapeHTML(post.id)}" novalidate ${state.shelfLoading ? 'aria-busy="true"' : ''}>
+        <fieldset class="shelf-picker-list"><legend class="shelf-picker-legend">Choose one or more Shelves</legend>${checkboxes}</fieldset>
+        <div class="shelf-picker-actions"><button class="primary-button" type="submit" ${disabled}>${state.shelfLoading ? `<span class="registration-loading"><span class="loading-dot"></span>Saving…</span>` : `Save to Shelves ${icon('arrow', 14)}`}</button><button class="quiet-button" type="button" data-action="close-shelf-picker" ${disabled}>Cancel</button></div>
+      </form>` : `<div class="shelf-picker-empty">${renderEmpty('You haven’t created a Shelf yet.', 'Create one to save this post for later.') }<button class="primary-button" type="button" data-action="create-shelf-from-picker">Create a Shelf ${icon('arrow', 14)}</button></div>`}
+    </section>
+  </div>`;
 }
 
 function renderHome() {
@@ -381,6 +431,9 @@ function renderPostCard(post) {
   const profileRoute = `/profile/${encodeURIComponent(post.authorId)}`;
   const editDraft = ownsPost ? state.postDrafts[postDraftKey(account.id, board.id, post.id)] : null;
   const deleteConfirmation = ownsPost && state.deleteConfirmPostId === post.id;
+  const shelfStatus = state.shelfStatus?.ownerId === account?.id && state.shelfStatus?.postId === post.id
+    ? `<p class="shelf-post-status" role="status">${icon('check', 13)}${escapeHTML(state.shelfStatus.message)}</p>`
+    : '';
   return `<article class="post-card">
     <div class="post-card-heading">
       <div class="post-author"><span class="post-avatar" aria-hidden="true">${escapeHTML((post.authorUsername[0] || 'F').toUpperCase())}</span><span><a class="post-author-name" href="${hrefFor(profileRoute)}" data-route="${profileRoute}">@${escapeHTML(post.authorUsername)}</a><span class="post-date">Published ${escapeHTML(formatPostDate(post.publishedAt))}</span></span></div>
@@ -388,12 +441,16 @@ function renderPostCard(post) {
     </div>
     ${post.content ? `<p class="post-content">${escapeHTML(post.content)}</p>` : ''}
     ${renderPostMedia(post.media, post.authorUsername)}
+    ${shelfStatus}
     ${ownsPost && editDraft ? `<div class="post-draft-inline"><span>Unpublished edits saved in this tab.</span><div><button class="text-button" type="button" data-action="resume-post-draft" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">Resume editing</button><button class="text-button text-danger" type="button" data-action="discard-saved-post-draft" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">Discard draft</button></div></div>` : ''}
-    ${ownsPost ? (state.postPublishing
-      ? `<span class="post-saving" role="status">${state.pendingPost?.postId === post.id ? 'Saving changes…' : 'Please wait for the post to finish publishing…'}</span>`
-      : deleteConfirmation
-      ? `<div class="post-delete-confirm" role="alert"><span>Delete this post?</span><button class="text-button text-danger" type="button" data-action="confirm-delete-post" data-post-id="${escapeHTML(post.id)}">Delete</button><button class="text-button" type="button" data-action="cancel-delete-post">Cancel</button></div>`
-      : `<div class="post-actions"><button class="text-button" type="button" data-action="edit-post" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">${icon('edit', 13)} Edit</button><button class="text-button text-danger" type="button" data-action="request-delete-post" data-post-id="${escapeHTML(post.id)}">${icon('trash', 13)} Delete</button></div>`) : ''}
+    <div class="post-actions">
+      <button class="text-button shelf-save-button" type="button" data-action="open-shelf-picker" data-post-id="${escapeHTML(post.id)}" ${state.shelfLoading ? 'disabled' : ''}>${icon('bookmark', 13)} Add to Shelf</button>
+      ${ownsPost ? (state.postPublishing
+        ? `<span class="post-saving" role="status">${state.pendingPost?.postId === post.id ? 'Saving changes…' : 'Please wait for the post to finish publishing…'}</span>`
+        : deleteConfirmation
+        ? `<div class="post-delete-confirm" role="alert"><span>Delete this post?</span><button class="text-button text-danger" type="button" data-action="confirm-delete-post" data-post-id="${escapeHTML(post.id)}">Delete</button><button class="text-button" type="button" data-action="cancel-delete-post">Cancel</button></div>`
+        : `<button class="text-button" type="button" data-action="edit-post" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">${icon('edit', 13)} Edit</button><button class="text-button text-danger" type="button" data-action="request-delete-post" data-post-id="${escapeHTML(post.id)}">${icon('trash', 13)} Delete</button>`) : ''}
+    </div>
   </article>`;
 }
 
@@ -550,7 +607,8 @@ function renderBoardDetail(boardId) {
   const owner = activeAccount()?.role === 'Artist' && activeAccount()?.id === board.ownerId;
   const account = activeAccount();
   const ownerAccount = state.accounts.find((account) => account.id === board.ownerId);
-  const username = ownerAccount ? `@${escapeHTML(ownerAccount.username)}` : '';
+  const ownerProfileRoute = `/profile/${encodeURIComponent(board.ownerId)}`;
+  const username = ownerAccount ? `<a href="${hrefFor(ownerProfileRoute)}" data-route="${ownerProfileRoute}">@${escapeHTML(ownerAccount.username)}</a>` : '';
   const following = account?.role === 'Fan' && isFollowingArtist(account.id, board.ownerId);
   const posts = chronologicalPosts(state.posts.filter((post) => post.boardId === board.id));
   const postStatus = state.postStatus?.boardId === board.id && state.postStatus?.userId === account?.id
@@ -574,8 +632,300 @@ function renderBoardDetail(boardId) {
   </section>`;
 }
 
+function renderShelfCard(shelf) {
+  const route = `/shelves/${encodeURIComponent(shelf.id)}`;
+  return `<a class="shelf-card" href="${hrefFor(route)}" data-route="${route}">
+    <span class="shelf-card-mark">${icon('bookmark', 17)}</span>
+    <span class="shelf-card-copy"><span class="shelf-card-title">${escapeHTML(shelf.title)}</span>${shelf.description ? `<span class="shelf-card-description">${escapeHTML(shelf.description)}</span>` : ''}</span>
+    <span class="shelf-visibility shelf-visibility-${shelf.visibility}">${shelf.visibility === 'public' ? 'Public' : 'Private'}</span>
+    ${icon('arrow', 14)}
+  </a>`;
+}
+
+function renderPublicShelves(ownerId, heading = 'Public Shelves') {
+  const shelves = state.shelves.filter((shelf) => shelf.ownerId === ownerId && shelf.visibility === 'public');
+  return `<section class="profile-shelves"><div class="section-heading-row"><h2 class="section-heading">${heading}</h2>${activeAccount()?.id === ownerId ? `<a class="text-link" href="${hrefFor('/shelves')}" data-route="/shelves">Manage Shelves ${icon('arrow', 13)}</a>` : ''}</div>
+    ${shelves.length ? `<div class="shelf-grid">${shelves.map(renderShelfCard).join('')}</div>` : renderEmpty('No public Shelves yet.')}
+  </section>`;
+}
+
 function renderShelves() {
-  return `<section><p class="eyebrow">Collected by you</p><h1 class="page-title">Shelves</h1><p class="page-subtitle">A private place for the work you want to keep.</p><hr class="section-rule">${renderEmpty('Your shelves are empty.')}</section>`;
+  const account = activeAccount();
+  const shelves = state.shelves.filter((shelf) => shelf.ownerId === account?.id);
+  const status = state.shelfStatus?.ownerId === account?.id && !state.shelfStatus?.shelfId && !state.shelfStatus?.postId
+    ? `<p class="success-banner ${state.shelfStatus.kind === 'error' ? 'shelf-error-banner' : ''}" role="${state.shelfStatus.kind === 'error' ? 'alert' : 'status'}">${state.shelfStatus.kind === 'error' ? icon('close', 15) : icon('check', 15)}${escapeHTML(state.shelfStatus.message)}</p>`
+    : '';
+  const loading = state.shelfLoading ? `<p class="shelf-loading" role="status">Updating your Shelves…</p>` : '';
+  return `<section><div class="page-heading-row shelf-page-heading"><div><p class="eyebrow">Collected by you</p><h1 class="page-title">Shelves</h1><p class="page-subtitle">A place for the posts you want to revisit, private or public.</p></div><button class="primary-button" type="button" data-action="create-shelf" ${state.shelfLoading ? 'disabled' : ''}>${icon('plus', 15)} Create a Shelf</button></div>
+    ${status}${loading}
+    ${shelves.length ? `<div class="shelf-grid">${shelves.map(renderShelfCard).join('')}</div>` : `${renderEmpty('Your shelves are empty.', 'Create a Shelf to keep fan posts you want to revisit.')}<div class="empty-action"><button class="quiet-button" type="button" data-action="create-shelf" ${state.shelfLoading ? 'disabled' : ''}>Create your first Shelf ${icon('arrow', 14)}</button></div>`}
+  </section>`;
+}
+
+function renderShelfDetail(shelfId) {
+  const account = activeAccount();
+  const shelf = state.shelves.find((entry) => entry.id === shelfId);
+  const owner = Boolean(shelf && account?.id === shelf.ownerId);
+  if (!shelf || (!owner && shelf.visibility !== 'public')) {
+    return `<section><p class="eyebrow">Personal Shelf</p><h1 class="page-title">Shelf not available.</h1><p class="page-subtitle">This Shelf may be private or no longer available.</p>${renderEmpty('Shelf not found.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/shelves')}" data-route="/shelves">Back to Shelves ${icon('arrow', 14)}</a></div></section>`;
+  }
+
+  const shelfOwner = state.accounts.find((entry) => entry.id === shelf.ownerId);
+  const posts = shelf.postIds.map((postId) => state.posts.find((post) => post.id === postId)).filter((post) => post && isVisibleFanPost(post));
+  const status = owner && state.shelfStatus?.ownerId === account.id && state.shelfStatus?.shelfId === shelf.id
+    ? `<p class="success-banner ${state.shelfStatus.kind === 'error' ? 'shelf-error-banner' : ''}" role="${state.shelfStatus.kind === 'error' ? 'alert' : 'status'}">${state.shelfStatus.kind === 'error' ? icon('close', 15) : icon('check', 15)}${escapeHTML(state.shelfStatus.message)}</p>`
+    : '';
+  const ownerRoute = `/profile/${encodeURIComponent(shelf.ownerId)}`;
+  const confirmDelete = owner && state.shelfDeleteConfirmId === shelf.id;
+  const actions = owner
+    ? `<div class="shelf-manage-actions"><button class="quiet-button" type="button" data-action="edit-shelf" data-shelf-id="${escapeHTML(shelf.id)}" ${state.shelfLoading ? 'disabled' : ''}>${icon('edit', 14)} Edit Shelf</button><button class="text-button text-danger" type="button" data-action="delete-shelf" data-shelf-id="${escapeHTML(shelf.id)}" ${state.shelfLoading ? 'disabled' : ''}>${icon('trash', 14)} Delete Shelf</button></div>`
+    : '';
+  const deletePrompt = confirmDelete
+    ? `<div class="shelf-delete-confirm" role="alert"><span>Delete this Shelf? Saved posts will remain on their original boards.</span><button class="text-button text-danger" type="button" data-action="confirm-delete-shelf" data-shelf-id="${escapeHTML(shelf.id)}" ${state.shelfLoading ? 'disabled' : ''}>${state.shelfLoading ? 'Deleting…' : 'Delete Shelf'}</button><button class="text-button" type="button" data-action="cancel-delete-shelf" ${state.shelfLoading ? 'disabled' : ''}>Cancel</button></div>`
+    : '';
+  return `<section><p class="eyebrow">Personal Shelf</p><a class="shelf-back-link" href="${hrefFor('/shelves')}" data-route="/shelves">${icon('back', 14)} All Shelves</a>
+    <div class="shelf-detail-heading"><div><span class="shelf-visibility shelf-visibility-${shelf.visibility}">${shelf.visibility === 'public' ? 'Public' : 'Private'}</span><h1 class="page-title">${escapeHTML(shelf.title)}</h1>${shelf.description ? `<p class="page-subtitle shelf-detail-description">${escapeHTML(shelf.description)}</p>` : ''}<p class="shelf-owner-line">By <a href="${hrefFor(ownerRoute)}" data-route="${ownerRoute}">${escapeHTML(shelfOwner?.name || 'Stillroom member')}</a></p></div>${actions}</div>
+    ${status}${deletePrompt}
+    ${posts.length ? `<div class="shelf-post-list">${posts.map((post) => {
+      const board = state.boards.find((entry) => entry.id === post.boardId);
+      const route = board ? `/board/${encodeURIComponent(board.id)}` : '/explore';
+      return `<article class="shelf-post-item"><div class="shelf-post-toolbar"><a class="text-link" href="${hrefFor(route)}" data-route="${route}">Open original Artist Board ${icon('arrow', 13)}</a>${owner ? `<button class="text-button text-danger" type="button" data-action="remove-post-from-shelf" data-shelf-id="${escapeHTML(shelf.id)}" data-post-id="${escapeHTML(post.id)}">${icon('trash', 13)} Remove from Shelf</button>` : ''}</div>${renderPostCard(post)}</article>`;
+    }).join('')}</div>` : renderEmpty('This Shelf is empty.', owner ? 'Add fan posts from any Artist Board to collect them here.' : 'There are no saved posts in this Shelf yet.')}
+  </section>`;
+}
+
+function shelfFieldError(field) {
+  return state.shelfErrors[field] ? `<span class="field-error" id="shelf-error-${field}" role="alert">${escapeHTML(state.shelfErrors[field])}</span>` : '';
+}
+
+function renderShelfForm(mode, shelfId = null) {
+  const account = activeAccount();
+  const existing = shelfId ? state.shelves.find((shelf) => shelf.id === shelfId && shelf.ownerId === account?.id) : null;
+  if (!account || (mode === 'edit' && !existing)) {
+    return `<section><p class="eyebrow">Personal Shelf</p><h1 class="page-title">Shelf unavailable.</h1>${renderEmpty('You can only edit your own Shelves.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/shelves')}" data-route="/shelves">Back to Shelves</a></div></section>`;
+  }
+  if (!state.shelfDraft || state.shelfDraft.shelfId !== (existing?.id || null)) {
+    state.shelfDraft = existing
+      ? { shelfId: existing.id, title: existing.title, description: existing.description, visibility: existing.visibility }
+      : { shelfId: null, title: '', description: '', visibility: 'private' };
+  }
+  const draft = state.shelfDraft;
+  const disabled = state.shelfLoading ? 'disabled' : '';
+  const formError = state.shelfErrors.form ? `<p class="inline-error" role="alert">${escapeHTML(state.shelfErrors.form)}</p>` : '';
+  const cancelRoute = existing ? `/shelves/${encodeURIComponent(existing.id)}` : (state.shelfReturnRoute || '/shelves');
+  return `<section><p class="eyebrow">${existing ? 'Make a change' : 'A place to return to'}</p><h1 class="page-title">${existing ? 'Edit Shelf' : 'Create a Shelf'}</h1><p class="page-subtitle">Choose what to keep close. You can change visibility at any time.</p>
+    <div class="shelf-form-card">${formError}
+      <form data-form="shelf" data-mode="${mode}" data-shelf-id="${escapeHTML(existing?.id || '')}" novalidate ${state.shelfLoading ? 'aria-busy="true"' : ''}>
+        <label class="field-label">Shelf title<input class="field-input" name="title" maxlength="80" value="${escapeHTML(draft.title)}" placeholder="A title for this collection" aria-invalid="${Boolean(state.shelfErrors.title)}" ${state.shelfErrors.title ? 'aria-describedby="shelf-error-title"' : ''} ${disabled} required>${shelfFieldError('title')}</label>
+        <label class="field-label">Description <span class="optional-label">(optional)</span><textarea class="field-input field-textarea" name="description" rows="4" maxlength="500" placeholder="What brings these posts together?" aria-invalid="${Boolean(state.shelfErrors.description)}" ${state.shelfErrors.description ? 'aria-describedby="shelf-error-description"' : ''} ${disabled}>${escapeHTML(draft.description)}</textarea>${shelfFieldError('description')}</label>
+        <label class="field-label">Visibility<select class="field-input shelf-visibility-select" name="visibility" ${disabled}><option value="private" ${draft.visibility === 'private' ? 'selected' : ''}>Private — only you can view this Shelf</option><option value="public" ${draft.visibility === 'public' ? 'selected' : ''}>Public — visible from your profile</option></select></label>
+        <div class="shelf-form-footer"><button class="primary-button" type="submit" ${disabled}>${state.shelfLoading ? `<span class="registration-loading"><span class="loading-dot"></span>Saving…</span>` : `${existing ? 'Save changes' : 'Create Shelf'} ${icon('arrow', 14)}`}</button><button class="quiet-button" type="button" data-action="cancel-shelf-form" data-cancel-route="${cancelRoute}" ${disabled}>Cancel</button></div>
+      </form>
+    </div>
+  </section>`;
+}
+
+function beginShelfForm(mode, shelfId = null) {
+  const account = activeAccount();
+  const shelf = shelfId ? state.shelves.find((entry) => entry.id === shelfId && entry.ownerId === account?.id) : null;
+  if (!account || (mode === 'edit' && !shelf)) return;
+  state.shelfDraft = shelf
+    ? { shelfId: shelf.id, title: shelf.title, description: shelf.description, visibility: shelf.visibility }
+    : { shelfId: null, title: '', description: '', visibility: 'private' };
+  state.shelfErrors = {};
+  state.shelfStatus = null;
+  state.shelfDeleteConfirmId = null;
+  if (state.shelfPickerPostId) {
+    state.shelfPickerPostId = null;
+    state.shelfPickerSelection = [];
+    state.shelfPickerError = '';
+  }
+  navigate(shelf ? `/shelves/${encodeURIComponent(shelf.id)}/edit` : '/shelves/new');
+}
+
+function submitShelfForm(form) {
+  const account = activeAccount();
+  if (!account || state.shelfLoading) return;
+  const mode = form.dataset.mode === 'edit' ? 'edit' : 'create';
+  const shelfId = form.dataset.shelfId || null;
+  const formData = new FormData(form);
+  const values = {
+    title: String(formData.get('title') || '').trim(),
+    description: String(formData.get('description') || '').trim(),
+    visibility: String(formData.get('visibility') || 'private'),
+  };
+  const errors = {};
+  if (!values.title) errors.title = 'Add a title for your Shelf.';
+  else if (values.title.length > 80) errors.title = 'Shelf titles must be 80 characters or fewer.';
+  if (values.description.length > 500) errors.description = 'Descriptions must be 500 characters or fewer.';
+  if (!['private', 'public'].includes(values.visibility)) errors.form = 'Choose whether this Shelf is private or public.';
+  const existing = mode === 'edit'
+    ? state.shelves.find((shelf) => shelf.id === shelfId && shelf.ownerId === account.id)
+    : null;
+  if (mode === 'edit' && !existing) errors.form = 'This Shelf is no longer available to edit.';
+  state.shelfDraft = { shelfId, ...values };
+  state.shelfErrors = errors;
+  if (Object.keys(errors).length) {
+    render();
+    app.querySelector('[name="title"]')?.focus();
+    return;
+  }
+
+  state.shelfLoading = true;
+  state.pendingShelf = { action: mode, shelfId, ownerId: account.id, values };
+  render();
+  state.shelfTimer = window.setTimeout(() => {
+    const pending = state.pendingShelf;
+    if (!pending || activeAccount()?.id !== pending.ownerId) {
+      cancelShelfOperation();
+      render();
+      return;
+    }
+    let shelf;
+    if (pending.action === 'create') {
+      shelf = {
+        id: `shelf-${state.nextShelfId++}`,
+        ownerId: pending.ownerId,
+        ...pending.values,
+        postIds: [],
+      };
+      state.shelves.unshift(shelf);
+    } else {
+      shelf = state.shelves.find((entry) => entry.id === pending.shelfId && entry.ownerId === pending.ownerId);
+      if (!shelf) {
+        state.shelfErrors = { form: 'This Shelf could not be updated. Please try again.' };
+        state.shelfLoading = false;
+        state.shelfTimer = null;
+        state.pendingShelf = null;
+        render();
+        return;
+      }
+      Object.assign(shelf, pending.values);
+    }
+    const returnPostId = pending.action === 'create' ? state.shelfReturnPostId : null;
+    state.shelfStatus = {
+      ownerId: pending.ownerId,
+      shelfId: shelf.id,
+      message: pending.action === 'create' ? 'Shelf created.' : 'Shelf updated.',
+    };
+    state.shelfDraft = null;
+    state.shelfErrors = {};
+    state.shelfLoading = false;
+    state.shelfTimer = null;
+    state.pendingShelf = null;
+    state.shelfReturnPostId = null;
+    state.shelfReturnRoute = null;
+    navigate(`/shelves/${encodeURIComponent(shelf.id)}`);
+    if (returnPostId && state.posts.some((entry) => entry.id === returnPostId)) openShelfPicker(returnPostId, shelf.id);
+  }, 180);
+}
+
+function openShelfPicker(postId, preselectedShelfId = null) {
+  const account = activeAccount();
+  const post = state.posts.find((entry) => entry.id === postId && isVisibleFanPost(entry));
+  if (!account || !post || state.shelfLoading) return;
+  const ownedShelves = state.shelves.filter((shelf) => shelf.ownerId === account.id);
+  state.shelfPickerPostId = post.id;
+  state.shelfPickerSelection = ownedShelves
+    .filter((shelf) => shelf.postIds.includes(post.id) || shelf.id === preselectedShelfId)
+    .map((shelf) => shelf.id);
+  state.shelfPickerError = '';
+  render();
+}
+
+function submitShelfPicker(form) {
+  const account = activeAccount();
+  const postId = form.dataset.postId;
+  const post = state.posts.find((entry) => entry.id === postId && isVisibleFanPost(entry));
+  if (!account || !post || state.shelfLoading) {
+    state.shelfPickerError = 'This post is no longer available to save.';
+    render();
+    return;
+  }
+  const ownedShelves = state.shelves.filter((shelf) => shelf.ownerId === account.id);
+  const selectedIds = [...new Set(new FormData(form).getAll('shelfIds').map(String))];
+  if (selectedIds.some((id) => !ownedShelves.some((shelf) => shelf.id === id))) {
+    state.shelfPickerError = 'Choose only Shelves in your collection.';
+    render();
+    return;
+  }
+  const alreadySaved = ownedShelves.some((shelf) => shelf.postIds.includes(postId));
+  if (!selectedIds.length && !alreadySaved) {
+    state.shelfPickerError = 'Choose at least one Shelf to save this post, or cancel.';
+    render();
+    return;
+  }
+  state.shelfPickerSelection = selectedIds;
+  state.shelfPickerError = '';
+  state.shelfLoading = true;
+  state.pendingShelf = { action: 'save-post', postId, ownerId: account.id, selectedIds };
+  render();
+  state.shelfTimer = window.setTimeout(() => {
+    const pending = state.pendingShelf;
+    if (!pending || activeAccount()?.id !== pending.ownerId || !state.posts.some((entry) => entry.id === pending.postId)) {
+      cancelShelfOperation();
+      state.shelfPickerError = 'This post could not be saved. Please try again.';
+      render();
+      return;
+    }
+    const selected = new Set(pending.selectedIds);
+    state.shelves = state.shelves.map((shelf) => {
+      if (shelf.ownerId !== pending.ownerId) return shelf;
+      const alreadySaved = shelf.postIds.includes(pending.postId);
+      const shouldSave = selected.has(shelf.id);
+      if (shouldSave && !alreadySaved) return { ...shelf, postIds: [...shelf.postIds, pending.postId] };
+      if (!shouldSave && alreadySaved) return { ...shelf, postIds: shelf.postIds.filter((id) => id !== pending.postId) };
+      return shelf;
+    });
+    const count = selected.size;
+    state.shelfStatus = {
+      ownerId: pending.ownerId,
+      postId: pending.postId,
+      message: count ? `Saved to ${count} ${count === 1 ? 'Shelf' : 'Shelves'}.` : 'Removed from your Shelves.',
+    };
+    state.shelfPickerPostId = null;
+    state.shelfPickerSelection = [];
+    state.shelfPickerError = '';
+    state.shelfLoading = false;
+    state.shelfTimer = null;
+    state.pendingShelf = null;
+    render();
+  }, 180);
+}
+
+function removePostFromShelf(shelfId, postId) {
+  const account = activeAccount();
+  const shelf = state.shelves.find((entry) => entry.id === shelfId && entry.ownerId === account?.id);
+  if (!account || !shelf || !shelf.postIds.includes(postId)) return;
+  shelf.postIds = shelf.postIds.filter((entry) => entry !== postId);
+  state.shelfStatus = { ownerId: account.id, shelfId, message: 'Post removed from this Shelf.' };
+  render();
+}
+
+function confirmDeleteShelf(shelfId) {
+  const account = activeAccount();
+  const shelf = state.shelves.find((entry) => entry.id === shelfId && entry.ownerId === account?.id);
+  if (!account || !shelf || state.shelfLoading) return;
+  state.shelfLoading = true;
+  state.pendingShelf = { action: 'delete', shelfId, ownerId: account.id };
+  render();
+  state.shelfTimer = window.setTimeout(() => {
+    const pending = state.pendingShelf;
+    const targetShelf = pending && state.shelves.find((entry) => entry.id === pending.shelfId && entry.ownerId === pending.ownerId);
+    if (!pending || !targetShelf || activeAccount()?.id !== pending.ownerId) {
+      cancelShelfOperation();
+      state.shelfStatus = { ownerId: account.id, shelfId, kind: 'error', message: 'This Shelf could not be deleted. Please try again.' };
+      render();
+      return;
+    }
+    state.shelves = state.shelves.filter((entry) => entry.id !== targetShelf.id);
+    state.shelfDeleteConfirmId = null;
+    state.shelfStatus = { ownerId: account.id, message: 'Shelf deleted. Its original posts remain on their Artist Boards.' };
+    state.shelfLoading = false;
+    state.shelfTimer = null;
+    state.pendingShelf = null;
+    navigate('/shelves');
+  }, 180);
 }
 
 function renderProfile() {
@@ -594,6 +944,7 @@ function renderProfile() {
       <div class="profile-card-head"><span class="profile-avatar">${escapeHTML((account.name.trim()[0] || account.username[0] || 'S').toUpperCase())}</span><div><h2 class="profile-name">${name}</h2><p class="profile-meta">@${username}</p></div></div>
       <span class="role-pill">${escapeHTML(account.role)}</span>${profilePanel}
     </div>
+    ${renderPublicShelves(account.id)}
     <section class="switcher-section" aria-labelledby="switcher-title">
       <div class="switcher-heading"><h2 class="switcher-title" id="switcher-title">Demo accounts</h2><span class="switcher-caption">Switch accounts in this tab</span></div>
       <div class="switcher-list">${switcher}</div>
@@ -604,20 +955,25 @@ function renderProfile() {
   </section>`;
 }
 
-function renderPublicFanProfile(accountId) {
-  const profile = state.accounts.find((entry) => entry.id === accountId && entry.role === 'Fan');
+function renderPublicProfile(accountId) {
+  const profile = state.accounts.find((entry) => entry.id === accountId);
   if (!profile) {
-    return `<section><p class="eyebrow">Fan profile</p><h1 class="page-title">Profile not found.</h1><p class="page-subtitle">This profile isn’t available in this session.</p>${renderEmpty('No Fan profile found.')}</section>`;
+    return `<section><p class="eyebrow">Member profile</p><h1 class="page-title">Profile not found.</h1><p class="page-subtitle">This profile isn’t available in this session.</p>${renderEmpty('No profile found.')}</section>`;
   }
-  const posts = chronologicalPosts(state.posts.filter((post) => post.authorId === profile.id && isVisibleFanPost(post)));
-  return `<section><p class="eyebrow">A member of Stillroom</p><h1 class="page-title">Fan profile</h1>
+  const posts = profile.role === 'Fan'
+    ? chronologicalPosts(state.posts.filter((post) => post.authorId === profile.id && isVisibleFanPost(post)))
+    : [];
+  const artistBoard = profile.role === 'Artist' ? boardForOwner(profile.id) : null;
+  const boardRoute = artistBoard ? `/board/${encodeURIComponent(artistBoard.id)}` : '';
+  return `<section><p class="eyebrow">A member of Stillroom</p><h1 class="page-title">${escapeHTML(profile.role)} profile</h1>
     <div class="profile-card public-profile-card">
       <div class="profile-card-head"><span class="profile-avatar">${escapeHTML((profile.name.trim()[0] || profile.username[0] || 'F').toUpperCase())}</span><div><h2 class="profile-name">${escapeHTML(profile.name)}</h2><p class="profile-meta">@${escapeHTML(profile.username)}</p></div></div>
-      <span class="role-pill">Fan</span>
+      <span class="role-pill">${escapeHTML(profile.role)}</span>
       ${activeAccount()?.id === profile.id ? `<a class="quiet-button public-profile-settings" href="${hrefFor('/profile')}" data-route="/profile">Account settings ${icon('arrow', 14)}</a>` : ''}
     </div>
-    <h2 class="section-heading">Posts</h2>
-    ${posts.length ? `<div class="post-list">${posts.map((post) => renderPostCard(post)).join('')}</div>` : renderEmpty('No posts yet.', 'When this Fan publishes, their posts will appear here.')}
+    ${artistBoard ? `<section class="profile-board-section"><h2 class="section-heading">Artist board</h2>${renderBoardCard(artistBoard)}</section>` : ''}
+    ${renderPublicShelves(profile.id)}
+    ${profile.role === 'Fan' ? `<h2 class="section-heading">Posts</h2>${posts.length ? `<div class="post-list">${posts.map((post) => renderPostCard(post)).join('')}</div>` : renderEmpty('No posts yet.', 'When this Fan publishes, their posts will appear here.')}` : ''}
   </section>`;
 }
 
@@ -641,7 +997,10 @@ function render() {
 
   const boardRoute = state.route.match(/^\/board\/([^/]+)$/);
   const publicProfileRoute = state.route.match(/^\/profile\/([^/]+)$/);
-  const specialRoute = ['/artists/new', '/artists/edit'].includes(state.route) || Boolean(boardRoute) || Boolean(publicProfileRoute);
+  const shelfEditRoute = state.route.match(/^\/shelves\/([^/]+)\/edit$/);
+  const shelfDetailRoute = state.route.match(/^\/shelves\/([^/]+)$/);
+  const specialRoute = ['/artists/new', '/artists/edit', '/shelves/new'].includes(state.route)
+    || Boolean(boardRoute) || Boolean(publicProfileRoute) || Boolean(shelfEditRoute) || Boolean(shelfDetailRoute);
   if (!navItems.some((item) => item.path === state.route) && state.route !== '/' && !specialRoute) state.route = '/home';
   let content;
   let title;
@@ -659,9 +1018,23 @@ function render() {
   else if (publicProfileRoute) {
     let profileId = publicProfileRoute[1];
     try { profileId = decodeURIComponent(profileId); } catch { /* Keep the unmatched route in the not-found state. */ }
-    const profile = state.accounts.find((entry) => entry.id === profileId && entry.role === 'Fan');
-    content = renderPublicFanProfile(profileId);
-    title = profile?.name || 'Fan profile';
+    const profile = state.accounts.find((entry) => entry.id === profileId);
+    content = renderPublicProfile(profileId);
+    title = profile?.name || 'Member profile';
+  }
+  else if (state.route === '/shelves/new') { content = renderShelfForm('create'); title = 'Create a Shelf'; }
+  else if (shelfEditRoute) {
+    let shelfId = shelfEditRoute[1];
+    try { shelfId = decodeURIComponent(shelfId); } catch { /* Keep the unmatched route in the not-found state. */ }
+    content = renderShelfForm('edit', shelfId);
+    title = 'Edit Shelf';
+  }
+  else if (shelfDetailRoute && shelfDetailRoute[1] !== 'new') {
+    let shelfId = shelfDetailRoute[1];
+    try { shelfId = decodeURIComponent(shelfId); } catch { /* Keep the unmatched route in the not-found state. */ }
+    const shelf = state.shelves.find((entry) => entry.id === shelfId);
+    content = renderShelfDetail(shelfId);
+    title = shelf?.title || 'Personal Shelf';
   }
   else if (state.route === '/shelves') { content = renderShelves(); title = 'Shelves'; }
   else if (state.route === '/profile') { content = renderProfile(); title = 'Profile'; }
@@ -864,6 +1237,9 @@ function deletePost(postId) {
   }
   if (post.media?.url?.startsWith('blob:')) URL.revokeObjectURL(post.media.url);
   state.posts = state.posts.filter((entry) => entry.id !== post.id);
+  state.shelves = state.shelves.map((shelf) => shelf.postIds.includes(post.id)
+    ? { ...shelf, postIds: shelf.postIds.filter((savedId) => savedId !== post.id) }
+    : shelf);
   if (state.postEditor?.postId === post.id) state.postEditor = null;
   state.deleteConfirmPostId = null;
   state.postStatus = { boardId: post.boardId, userId: account.id, message: 'Post deleted.' };
@@ -988,6 +1364,21 @@ app?.addEventListener('input', (event) => {
   if (target instanceof HTMLInputElement && target.name === 'profile-name') {
     state.profileDraft = target.value;
   }
+  if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)
+    && target.closest('form[data-form="shelf"]')
+    && ['title', 'description', 'visibility'].includes(target.name)) {
+    state.shelfDraft = { ...(state.shelfDraft || {}), [target.name]: target.value };
+    if (state.shelfErrors[target.name]) {
+      delete state.shelfErrors[target.name];
+      target.removeAttribute('aria-invalid');
+      target.removeAttribute('aria-describedby');
+      app.querySelector(`#shelf-error-${target.name}`)?.remove();
+    }
+    if (state.shelfErrors.form) {
+      delete state.shelfErrors.form;
+      app.querySelector('.shelf-form-card > .inline-error')?.remove();
+    }
+  }
   if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && ['artistName', 'discipline', 'biography'].includes(target.name)) {
     state.boardDraft = { ...(state.boardDraft || {}), [target.name]: target.value };
     if (state.boardErrors[target.name]) {
@@ -1024,6 +1415,10 @@ app?.addEventListener('input', (event) => {
 app?.addEventListener('change', (event) => {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
+  if (target.matches('input[name="shelfIds"]')) {
+    state.shelfPickerSelection = [...app.querySelectorAll('input[name="shelfIds"]:checked')].map((input) => input.value);
+    return;
+  }
   if (target.matches('[data-post-media]')) {
     selectPostMedia(target);
     return;
@@ -1073,6 +1468,8 @@ app?.addEventListener('submit', (event) => {
   if (form.dataset.form === 'registration' && !state.loading) submitRegistration(form);
   else if (form.dataset.form === 'board' && !state.boardLoading) submitBoard(form);
   else if (form.dataset.form === 'post' && !state.postPublishing) submitPost(form);
+  else if (form.dataset.form === 'shelf' && !state.shelfLoading) submitShelfForm(form);
+  else if (form.dataset.form === 'shelf-picker' && !state.shelfLoading) submitShelfPicker(form);
 });
 
 app?.addEventListener('click', (event) => {
@@ -1096,12 +1493,30 @@ app?.addEventListener('click', (event) => {
     navigate(activeAccount() ? '/profile' : '/');
   } else if (action === 'open-profile') navigate('/profile', { replace: true });
   else if (action === 'switch-account') {
+    state.shelfPickerPostId = null;
+    state.shelfPickerSelection = [];
+    state.shelfPickerError = '';
+    state.shelfReturnPostId = null;
+    state.shelfReturnRoute = null;
+    state.shelfDraft = null;
+    state.shelfErrors = {};
+    state.shelfStatus = null;
+    state.shelfDeleteConfirmId = null;
     state.activeAccountId = target.dataset.accountId;
     state.successAccountId = null;
     state.editingProfile = false;
     state.route = '/profile';
     navigate('/profile');
   } else if (action === 'logout') {
+    state.shelfPickerPostId = null;
+    state.shelfPickerSelection = [];
+    state.shelfPickerError = '';
+    state.shelfReturnPostId = null;
+    state.shelfReturnRoute = null;
+    state.shelfDraft = null;
+    state.shelfErrors = {};
+    state.shelfStatus = null;
+    state.shelfDeleteConfirmId = null;
     state.activeAccountId = null;
     state.successAccountId = null;
     state.editingProfile = false;
@@ -1142,6 +1557,46 @@ app?.addEventListener('click', (event) => {
   } else if (action === 'add-account') {
     state.editingProfile = false;
     beginRegistration(null);
+  } else if (action === 'create-shelf') {
+    beginShelfForm('create');
+  } else if (action === 'create-shelf-from-picker') {
+    state.shelfReturnPostId = state.shelfPickerPostId;
+    state.shelfReturnRoute = state.route;
+    beginShelfForm('create');
+  } else if (action === 'open-shelf-picker') {
+    openShelfPicker(target.dataset.postId);
+  } else if (action === 'close-shelf-picker') {
+    if (!state.shelfLoading) {
+      state.shelfPickerPostId = null;
+      state.shelfPickerSelection = [];
+      state.shelfPickerError = '';
+      render();
+    }
+  } else if (action === 'edit-shelf') {
+    beginShelfForm('edit', target.dataset.shelfId);
+  } else if (action === 'cancel-shelf-form') {
+    if (!state.shelfLoading) {
+      state.shelfReturnPostId = null;
+      state.shelfReturnRoute = null;
+      state.shelfDraft = null;
+      state.shelfErrors = {};
+      navigate(target.dataset.cancelRoute || '/shelves');
+    }
+  } else if (action === 'delete-shelf') {
+    const shelf = state.shelves.find((entry) => entry.id === target.dataset.shelfId && entry.ownerId === activeAccount()?.id);
+    if (shelf && !state.shelfLoading) {
+      state.shelfDeleteConfirmId = shelf.id;
+      render();
+    }
+  } else if (action === 'confirm-delete-shelf') {
+    confirmDeleteShelf(target.dataset.shelfId);
+  } else if (action === 'cancel-delete-shelf') {
+    if (!state.shelfLoading) {
+      state.shelfDeleteConfirmId = null;
+      render();
+    }
+  } else if (action === 'remove-post-from-shelf') {
+    removePostFromShelf(target.dataset.shelfId, target.dataset.postId);
   } else if (action === 'create-board') {
     beginBoardForm('create');
   } else if (action === 'edit-own-board') {
@@ -1220,11 +1675,13 @@ app?.addEventListener('click', (event) => {
 window.addEventListener('popstate', () => {
   if (state.loading) cancelRegistration();
   if (state.boardLoading) cancelBoardOperation();
+  if (state.shelfLoading) cancelShelfOperation();
   state.route = getRoute();
   render();
 });
 
-if (!navItems.some((item) => item.path === state.route) && state.route !== '/' && state.route !== '/register' && state.route !== '/confirmation') {
+const initialSpecialRoute = /^\/(?:board\/[^/]+|profile\/[^/]+|artists\/(?:new|edit)|shelves\/(?:new|[^/]+(?:\/edit)?))$/.test(state.route);
+if (!navItems.some((item) => item.path === state.route) && state.route !== '/' && state.route !== '/register' && state.route !== '/confirmation' && !initialSpecialRoute) {
   state.route = '/';
   history.replaceState({}, '', hrefFor('/'));
 }
