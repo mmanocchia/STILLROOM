@@ -375,6 +375,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .board-biography { max-width: 590px; margin: 16px 0 0; color: var(--muted); font-size: 12px; line-height: 1.8; white-space: pre-wrap; }
 .board-edit-button { margin-top: 18px; }
 .board-content-empty .empty-state { min-height: 230px; margin-top: 23px; }
+.board-follow-button { display: flex; margin-top: 13px; }
+.followed-board-list { display: grid; max-width: 760px; gap: 12px; margin-top: 27px; }
+.followed-board-row { display: flex; align-items: center; gap: 16px; }
+.followed-board-row .board-card { flex: 1; }
+.section-heading { margin: 34px 0 0; font: 500 22px 'Playfair Display', Georgia, serif; }
+.public-profile-card { margin-top: 24px; }
+.public-profile-settings { display: inline-flex; margin-top: 18px; }
 .post-create-trigger { margin-top: 24px; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .post-composer { max-width: 760px; margin: 24px 0; padding: 20px 21px; border: 1px solid var(--line); background: rgba(255,255,255,.18); }
 .post-composer .eyebrow { margin-bottom: 14px; }
@@ -395,9 +402,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .post-author { display: flex; min-width: 0; align-items: center; gap: 10px; }
 .post-avatar { display: grid; width: 35px; height: 35px; flex: 0 0 auto; place-items: center; border: 1px solid var(--line-dark); border-radius: 50%; background: var(--paper-deep); color: var(--rust); font: 500 14px 'Playfair Display', Georgia, serif; }
 .post-author > span:last-child { display: grid; gap: 4px; }
-.post-author-name { color: var(--ink); font-size: 11px; }
+.post-author-name { color: var(--ink); font-size: 11px; text-decoration: none; }
+.post-author-name:hover { color: var(--rust); }
 .post-date { color: var(--faint); font-size: 9px; }
-.post-board-link { display: inline-flex; align-items: center; gap: 5px; color: var(--rust); font-size: 10px; text-align: right; }
+.post-board-context { display: inline-flex; align-items: center; gap: 4px; color: var(--faint); font-size: 10px; text-align: right; }
+.post-board-link { color: var(--rust); font-size: 10px; text-decoration: none; }
 .post-board-link:hover { color: var(--rust-dark); }
 .post-content { margin: 17px 0 0; color: var(--ink); font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .post-media { overflow: hidden; margin-top: 16px; border: 1px solid var(--line); background: rgba(238,232,220,.35); }
@@ -467,9 +476,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .board-card { gap: 11px; padding: 13px; }
   .post-composer { padding: 18px 15px; }
   .post-card-heading { align-items: flex-start; flex-direction: column; gap: 9px; }
-  .post-board-link { margin-left: 45px; text-align: left; }
+  .post-board-context { margin-left: 45px; text-align: left; }
   .saved-post-draft { align-items: flex-start; flex-wrap: wrap; }
   .saved-post-draft > div { flex-basis: 100%; }
+  .followed-board-row { align-items: stretch; flex-direction: column; gap: 8px; }
+  .followed-board-row > button { align-self: flex-start; margin-left: 13px; }
   .post-draft-inline { align-items: flex-start; flex-direction: column; }
   .post-delete-confirm { justify-content: flex-start; flex-wrap: wrap; }
   .mobile-nav {

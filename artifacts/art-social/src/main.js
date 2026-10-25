@@ -14,6 +14,7 @@ const state = {
   accounts: [],
   boards: [],
   posts: [],
+  followedArtistsByFan: {},
   postDrafts: {},
   activeAccountId: null,
   route: getRoute(),
@@ -48,6 +49,7 @@ const state = {
   nextPostId: 1,
   postStatus: null,
   deleteConfirmPostId: null,
+  followStatus: null,
 };
 
 const iconPaths = {
@@ -119,6 +121,23 @@ function activeAccount() {
 
 function boardForOwner(ownerId) {
   return state.boards.find((board) => board.ownerId === ownerId) || null;
+}
+
+function followedArtistIds(fanId) {
+  return state.followedArtistsByFan[fanId] || [];
+}
+
+function isFollowingArtist(fanId, artistId) {
+  return followedArtistIds(fanId).includes(artistId);
+}
+
+function chronologicalPosts(posts) {
+  return posts.slice().sort((left, right) => left.publishedAt - right.publishedAt);
+}
+
+function isVisibleFanPost(post) {
+  const author = state.accounts.find((account) => account.id === post.authorId);
+  return author?.role === 'Fan' && state.boards.some((board) => board.id === post.boardId);
 }
 
 function postDraftKey(authorId, boardId, postId = null) {
@@ -256,7 +275,8 @@ function navLink(item, currentRoute) {
   const active = item.path === currentRoute
     || (item.path === '/home' && currentRoute === '/')
     || (item.path === '/artists' && currentRoute.startsWith('/artists/'))
-    || (item.path === '/explore' && currentRoute.startsWith('/board/'));
+    || (item.path === '/explore' && currentRoute.startsWith('/board/'))
+    || (item.path === '/profile' && currentRoute.startsWith('/profile/'));
   return `<a class="nav-link" href="${hrefFor(item.path)}" data-route="${item.path}" ${active ? 'aria-current="page"' : ''}>${icon(item.icon)}<span>${item.label}</span></a>`;
 }
 
@@ -293,16 +313,33 @@ function renderEmpty(title, copy = '') {
 function renderHome() {
   const selected = state.homeTab === 'for-you';
   const account = activeAccount();
-  const posts = state.posts.slice().sort((left, right) => right.publishedAt - left.publishedAt);
+  const fanPosts = state.posts.filter(isVisibleFanPost);
+  const followedIds = new Set(followedArtistIds(account?.id || ''));
+  const posts = chronologicalPosts(selected
+    ? fanPosts
+    : fanPosts.filter((post) => {
+      const board = state.boards.find((entry) => entry.id === post.boardId);
+      return board && followedIds.has(board.ownerId);
+    }));
+  const hasFollowedArtists = followedIds.size > 0;
   const status = state.postStatus?.userId === account?.id
     ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.postStatus.message)}</p>`
     : '';
   const pendingStatus = state.postPublishing && state.pendingPost?.authorId === account?.id
     ? `<p class="post-saving" role="status">Publishing your post…</p>`
     : '';
-  const content = selected
-    ? (posts.length ? `<div class="post-list home-feed">${posts.map((post) => renderPostCard(post, 'home')).join('')}</div>` : renderEmpty('Nothing here yet. Discover artists and start collecting.'))
-    : renderEmpty('You haven’t connected with any artists yet.');
+  let content;
+  if (posts.length) {
+    content = `<div class="post-list home-feed">${posts.map((post) => renderPostCard(post)).join('')}</div>`;
+  } else if (selected) {
+    content = renderEmpty('Nothing here yet. Discover artists and start collecting.');
+  } else if (!hasFollowedArtists) {
+    const title = account?.role === 'Fan' ? "You haven't added any artists to My Artists yet." : 'No artists in My Artists yet.';
+    const copy = account?.role === 'Fan' ? 'Follow an artist from their board to see posts here.' : 'My Artists is a private list available to Fan accounts.';
+    content = `${renderEmpty(title, copy)}${account?.role === 'Fan' ? `<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artist boards ${icon('arrow', 14)}</a></div>` : ''}`;
+  } else {
+    content = `${renderEmpty('No posts from your artists yet.', 'When they share something, it will appear here.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore more artists ${icon('arrow', 14)}</a></div>`;
+  }
   return `<section><p class="eyebrow">A quieter kind of feed</p><h1 class="page-title">Home</h1><p class="page-subtitle">A place for work that stays with you.</p>
     <div class="home-tabs" role="tablist" aria-label="Home feed"><button class="home-tab" type="button" data-action="home-tab" data-tab="for-you" role="tab" aria-selected="${selected}">For You</button><button class="home-tab" type="button" data-action="home-tab" data-tab="my-artists" role="tab" aria-selected="${!selected}">My Artists</button></div>
     ${status}${pendingStatus}${content}
@@ -341,12 +378,13 @@ function renderPostCard(post) {
   const account = activeAccount();
   const ownsPost = account?.role === 'Fan' && account.id === post.authorId;
   const boardRoute = `/board/${encodeURIComponent(board.id)}`;
+  const profileRoute = `/profile/${encodeURIComponent(post.authorId)}`;
   const editDraft = ownsPost ? state.postDrafts[postDraftKey(account.id, board.id, post.id)] : null;
   const deleteConfirmation = ownsPost && state.deleteConfirmPostId === post.id;
   return `<article class="post-card">
     <div class="post-card-heading">
-      <div class="post-author"><span class="post-avatar" aria-hidden="true">${escapeHTML((post.authorUsername[0] || 'F').toUpperCase())}</span><span><span class="post-author-name">@${escapeHTML(post.authorUsername)}</span><span class="post-date">Published ${escapeHTML(formatPostDate(post.publishedAt))}</span></span></div>
-      <a class="post-board-link" href="${hrefFor(boardRoute)}" data-route="${boardRoute}">On ${escapeHTML(board.artistName)}’s board ${icon('arrow', 12)}</a>
+      <div class="post-author"><span class="post-avatar" aria-hidden="true">${escapeHTML((post.authorUsername[0] || 'F').toUpperCase())}</span><span><a class="post-author-name" href="${hrefFor(profileRoute)}" data-route="${profileRoute}">@${escapeHTML(post.authorUsername)}</a><span class="post-date">Published ${escapeHTML(formatPostDate(post.publishedAt))}</span></span></div>
+      <span class="post-board-context">On <a class="post-board-link" href="${hrefFor(boardRoute)}" data-route="${boardRoute}">${escapeHTML(board.artistName)}</a>’s board ${icon('arrow', 12)}</span>
     </div>
     ${post.content ? `<p class="post-content">${escapeHTML(post.content)}</p>` : ''}
     ${renderPostMedia(post.media, post.authorUsername)}
@@ -424,10 +462,25 @@ function renderExplore() {
   </section>`;
 }
 
+function renderFollowedBoard(board) {
+  return `<div class="followed-board-row">${renderBoardCard(board)}<button class="text-button text-danger" type="button" data-action="toggle-artist-follow" data-board-id="${escapeHTML(board.id)}" aria-pressed="true">Remove from My Artists</button></div>`;
+}
+
 function renderArtists() {
   const account = activeAccount();
+  if (account?.role === 'Fan') {
+    const followed = new Set(followedArtistIds(account.id));
+    const boards = state.boards.filter((board) => followed.has(board.ownerId));
+    const status = state.followStatus?.userId === account.id
+      ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.followStatus.message)}</p>`
+      : '';
+    if (!boards.length) {
+      return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">A private list of artists you choose to follow.</p>${status}${renderEmpty("You haven't added any artists to My Artists yet.", 'Visit an artist board to add them here.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artist boards ${icon('arrow', 14)}</a></div></section>`;
+    }
+    return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">A private list of artists you choose to follow.</p>${status}<div class="followed-board-list">${boards.map(renderFollowedBoard).join('')}</div></section>`;
+  }
   if (account?.role !== 'Artist') {
-    return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">The artists you choose to keep close.</p>${renderEmpty("You haven't connected with any artists yet.")}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artist boards ${icon('arrow', 14)}</a></div></section>`;
+    return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">The artists you choose to keep close.</p>${renderEmpty("You haven't added any artists to My Artists yet.")}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artist boards ${icon('arrow', 14)}</a></div></section>`;
   }
 
   const board = boardForOwner(account.id);
@@ -498,9 +551,13 @@ function renderBoardDetail(boardId) {
   const account = activeAccount();
   const ownerAccount = state.accounts.find((account) => account.id === board.ownerId);
   const username = ownerAccount ? `@${escapeHTML(ownerAccount.username)}` : '';
-  const posts = state.posts.filter((post) => post.boardId === board.id).sort((left, right) => right.publishedAt - left.publishedAt);
+  const following = account?.role === 'Fan' && isFollowingArtist(account.id, board.ownerId);
+  const posts = chronologicalPosts(state.posts.filter((post) => post.boardId === board.id));
   const postStatus = state.postStatus?.boardId === board.id && state.postStatus?.userId === account?.id
     ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.postStatus.message)}</p>`
+    : '';
+  const followStatus = state.followStatus?.boardId === board.id && state.followStatus?.userId === account?.id
+    ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.followStatus.message)}</p>`
     : '';
   return `<section><p class="eyebrow">Artist board</p>
     ${owner && state.boardSuccessId === board.id ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.boardSuccess)}</p>` : ''}
@@ -508,9 +565,10 @@ function renderBoardDetail(boardId) {
       ${boardPortrait(board, true)}
       <div class="board-detail-copy"><span class="board-card-discipline">${escapeHTML(board.discipline)}</span><h1 class="page-title">${escapeHTML(board.artistName)}</h1><p class="board-owner-handle">${username}</p><p class="board-biography">${escapeHTML(board.biography)}</p>
         ${owner ? `<button class="quiet-button board-edit-button" type="button" data-action="edit-own-board">${icon('edit', 15)} Edit board information</button>` : ''}
+        ${account?.role === 'Fan' ? `<button class="quiet-button board-follow-button" type="button" data-action="toggle-artist-follow" data-board-id="${escapeHTML(board.id)}" aria-pressed="${following}">${following ? 'Remove from My Artists' : 'Add to My Artists'}</button>` : ''}
       </div>
     </div>
-    ${postStatus}
+    ${followStatus}${postStatus}
     ${renderBoardComposer(board)}
     ${posts.length ? `<div class="post-list board-post-list">${posts.map((post) => renderPostCard(post)).join('')}</div>` : `<div class="board-content-empty">${renderEmpty('This board is empty.', 'There are no posts here yet.')}</div>`}
   </section>`;
@@ -546,6 +604,23 @@ function renderProfile() {
   </section>`;
 }
 
+function renderPublicFanProfile(accountId) {
+  const profile = state.accounts.find((entry) => entry.id === accountId && entry.role === 'Fan');
+  if (!profile) {
+    return `<section><p class="eyebrow">Fan profile</p><h1 class="page-title">Profile not found.</h1><p class="page-subtitle">This profile isn’t available in this session.</p>${renderEmpty('No Fan profile found.')}</section>`;
+  }
+  const posts = chronologicalPosts(state.posts.filter((post) => post.authorId === profile.id && isVisibleFanPost(post)));
+  return `<section><p class="eyebrow">A member of Stillroom</p><h1 class="page-title">Fan profile</h1>
+    <div class="profile-card public-profile-card">
+      <div class="profile-card-head"><span class="profile-avatar">${escapeHTML((profile.name.trim()[0] || profile.username[0] || 'F').toUpperCase())}</span><div><h2 class="profile-name">${escapeHTML(profile.name)}</h2><p class="profile-meta">@${escapeHTML(profile.username)}</p></div></div>
+      <span class="role-pill">Fan</span>
+      ${activeAccount()?.id === profile.id ? `<a class="quiet-button public-profile-settings" href="${hrefFor('/profile')}" data-route="/profile">Account settings ${icon('arrow', 14)}</a>` : ''}
+    </div>
+    <h2 class="section-heading">Posts</h2>
+    ${posts.length ? `<div class="post-list">${posts.map((post) => renderPostCard(post)).join('')}</div>` : renderEmpty('No posts yet.', 'When this Fan publishes, their posts will appear here.')}
+  </section>`;
+}
+
 function render() {
   if (!app) return;
   const account = activeAccount();
@@ -565,7 +640,8 @@ function render() {
   }
 
   const boardRoute = state.route.match(/^\/board\/([^/]+)$/);
-  const specialRoute = ['/artists/new', '/artists/edit'].includes(state.route) || Boolean(boardRoute);
+  const publicProfileRoute = state.route.match(/^\/profile\/([^/]+)$/);
+  const specialRoute = ['/artists/new', '/artists/edit'].includes(state.route) || Boolean(boardRoute) || Boolean(publicProfileRoute);
   if (!navItems.some((item) => item.path === state.route) && state.route !== '/' && !specialRoute) state.route = '/home';
   let content;
   let title;
@@ -579,6 +655,13 @@ function render() {
     const board = state.boards.find((entry) => entry.id === boardId);
     content = renderBoardDetail(boardId);
     title = board?.artistName || 'Artist board';
+  }
+  else if (publicProfileRoute) {
+    let profileId = publicProfileRoute[1];
+    try { profileId = decodeURIComponent(profileId); } catch { /* Keep the unmatched route in the not-found state. */ }
+    const profile = state.accounts.find((entry) => entry.id === profileId && entry.role === 'Fan');
+    content = renderPublicFanProfile(profileId);
+    title = profile?.name || 'Fan profile';
   }
   else if (state.route === '/shelves') { content = renderShelves(); title = 'Shelves'; }
   else if (state.route === '/profile') { content = renderProfile(); title = 'Profile'; }
@@ -738,6 +821,24 @@ function startPostComposer(boardId, postId = null) {
   state.postStatus = null;
   state.deleteConfirmPostId = null;
   navigate(`/board/${encodeURIComponent(board.id)}`);
+}
+
+function toggleArtistFollow(boardId) {
+  const account = activeAccount();
+  const board = state.boards.find((entry) => entry.id === boardId);
+  if (account?.role !== 'Fan' || !board) return;
+
+  const current = followedArtistIds(account.id);
+  const following = current.includes(board.ownerId);
+  state.followedArtistsByFan[account.id] = following
+    ? current.filter((artistId) => artistId !== board.ownerId)
+    : [...current, board.ownerId];
+  state.followStatus = {
+    boardId: board.id,
+    userId: account.id,
+    message: following ? `${board.artistName} removed from My Artists.` : `${board.artistName} added to My Artists.`,
+  };
+  render();
 }
 
 function discardPostDraft(authorId, boardId, postId = null) {
@@ -1045,6 +1146,8 @@ app?.addEventListener('click', (event) => {
     beginBoardForm('create');
   } else if (action === 'edit-own-board') {
     beginBoardForm('edit');
+  } else if (action === 'toggle-artist-follow') {
+    toggleArtistFollow(target.dataset.boardId);
   } else if (action === 'cancel-board-form') {
     state.boardDraft = null;
     state.boardErrors = {};
