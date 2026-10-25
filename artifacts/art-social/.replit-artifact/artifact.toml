@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Art Social"
+description = "A responsive social platform concept connecting fans and artists across creative disciplines, with artist boards, fan posts, reposts, and personal Shelves for collecting favorite work."
+version = "1.0.0"
+id = "artifacts/art-social"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18833
+
+[services.development]
+run = "pnpm --filter @workspace/art-social run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/art-social", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/art-social/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18833"
+BASE_PATH = "/"
