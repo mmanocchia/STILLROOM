@@ -124,36 +124,6 @@
   opacity: .12;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
 }
-.artwork {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-}
-.artwork::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(145deg, transparent 50%, rgba(31, 26, 22, .12));
-}
-.artwork-vinyl {
-  background: radial-gradient(circle at 63% 48%, #dfc9aa 0 4%, #3e4640 4.3% 6%, #1c2927 6.5% 20%, #34534a 20.5% 21%, #263e38 21.5% 35%, #d0aa7c 35.5% 36%, #b36345 36.5% 55%, #e3c9a7 55.5%);
-}
-.artwork-film {
-  background: linear-gradient(118deg, transparent 0 38%, rgba(26, 29, 26, .8) 38.5% 40%, transparent 40.5%), linear-gradient(25deg, #b7b39e 0 35%, #d5b080 35% 57%, #677767 57% 100%);
-}
-.artwork-paint {
-  background: radial-gradient(ellipse at 50% 53%, #c76145 0 18%, transparent 18.5%), radial-gradient(ellipse at 43% 47%, #dca65d 0 24%, transparent 24.5%), radial-gradient(ellipse at 55% 40%, #536c5a 0 29%, transparent 29.5%), #e4d6bd;
-}
-.artwork-photo {
-  background: linear-gradient(90deg, transparent 49%, rgba(29, 35, 32, .55) 50% 51%, transparent 52%), linear-gradient(0deg, #d2c0a4 0 25%, #69766e 25% 45%, #b6a68a 45% 47%, #89928a 47% 100%);
-}
-.artwork-type {
-  background: repeating-linear-gradient(0deg, #d9b55e 0 2px, transparent 2px 16px), #374e47;
-}
-.artwork-fashion {
-  background: radial-gradient(ellipse at 50% 30%, #d2b49a 0 12%, transparent 12.5%), linear-gradient(105deg, transparent 32%, #843c36 33% 65%, transparent 66%), linear-gradient(0deg, #a4a18a, #ded1bc);
-}
 .page-enter { animation: arrive .38s cubic-bezier(.2,.75,.25,1) both; }
 @keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
