@@ -375,6 +375,41 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .board-biography { max-width: 590px; margin: 16px 0 0; color: var(--muted); font-size: 12px; line-height: 1.8; white-space: pre-wrap; }
 .board-edit-button { margin-top: 18px; }
 .board-content-empty .empty-state { min-height: 230px; margin-top: 23px; }
+.post-create-trigger { margin-top: 24px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.post-composer { max-width: 760px; margin: 24px 0; padding: 20px 21px; border: 1px solid var(--line); background: rgba(255,255,255,.18); }
+.post-composer .eyebrow { margin-bottom: 14px; }
+.post-textarea { min-height: 126px; }
+.post-upload-label { margin-top: 17px; }
+.post-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 11px; margin-top: 19px; }
+.post-form-actions button:disabled { cursor: wait; opacity: .65; }
+.post-saving { margin: 20px 0; color: var(--faint); font: 10px 'DM Mono', monospace; letter-spacing: .05em; }
+.saved-post-draft { display: flex; align-items: center; gap: 14px; margin: 22px 0 0; padding: 15px; border: 1px solid var(--line-dark); background: rgba(238,232,220,.45); }
+.saved-post-draft > div { min-width: 0; flex: 1; }
+.draft-label { margin: 0 0 4px; color: var(--rust); font: 9px 'DM Mono', monospace; letter-spacing: .13em; text-transform: uppercase; }
+.draft-copy { overflow: hidden; margin: 0; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.post-list { display: grid; max-width: 800px; gap: 0; margin-top: 16px; }
+.home-feed { margin-top: 28px; }
+.post-card { min-width: 0; padding: 21px 0 23px; border-bottom: 1px solid var(--line); }
+.post-card:first-child { border-top: 1px solid var(--line); }
+.post-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.post-author { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.post-avatar { display: grid; width: 35px; height: 35px; flex: 0 0 auto; place-items: center; border: 1px solid var(--line-dark); border-radius: 50%; background: var(--paper-deep); color: var(--rust); font: 500 14px 'Playfair Display', Georgia, serif; }
+.post-author > span:last-child { display: grid; gap: 4px; }
+.post-author-name { color: var(--ink); font-size: 11px; }
+.post-date { color: var(--faint); font-size: 9px; }
+.post-board-link { display: inline-flex; align-items: center; gap: 5px; color: var(--rust); font-size: 10px; text-align: right; }
+.post-board-link:hover { color: var(--rust-dark); }
+.post-content { margin: 17px 0 0; color: var(--ink); font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.post-media { overflow: hidden; margin-top: 16px; border: 1px solid var(--line); background: rgba(238,232,220,.35); }
+.post-media img, .post-media video { display: block; width: 100%; max-height: 560px; object-fit: contain; }
+.post-media video { background: #171512; }
+.post-actions { display: flex; justify-content: flex-end; gap: 15px; margin-top: 14px; }
+.text-danger { color: #9a493e; }
+.post-delete-confirm { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 15px; color: var(--muted); font-size: 10px; }
+.post-draft-inline { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--line-dark); color: var(--muted); font-size: 10px; }
+.post-draft-inline > div { display: flex; flex-wrap: wrap; gap: 12px; }
+.post-draft-media { margin-top: 14px; }
+.post-draft-media-info { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; color: var(--faint); font-size: 10px; }
 .owned-board-card { max-width: 720px; margin-top: 29px; }
 .owned-board-card .board-card { min-height: 112px; }
 .owned-board-empty { display: block; margin: 12px 0 0; color: var(--faint); font-size: 10px; }
@@ -430,6 +465,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .board-portrait-large { width: 112px; height: 112px; }
   .board-form-card { padding: 20px 17px; }
   .board-card { gap: 11px; padding: 13px; }
+  .post-composer { padding: 18px 15px; }
+  .post-card-heading { align-items: flex-start; flex-direction: column; gap: 9px; }
+  .post-board-link { margin-left: 45px; text-align: left; }
+  .saved-post-draft { align-items: flex-start; flex-wrap: wrap; }
+  .saved-post-draft > div { flex-basis: 100%; }
+  .post-draft-inline { align-items: flex-start; flex-direction: column; }
+  .post-delete-confirm { justify-content: flex-start; flex-wrap: wrap; }
   .mobile-nav {
     position: fixed;
     z-index: 6;

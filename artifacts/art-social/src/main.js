@@ -13,6 +13,8 @@ const navItems = [
 const state = {
   accounts: [],
   boards: [],
+  posts: [],
+  postDrafts: {},
   activeAccountId: null,
   route: getRoute(),
   pendingRole: null,
@@ -38,6 +40,14 @@ const state = {
   boardImageReadToken: 0,
   boardSuccess: '',
   boardSuccessId: null,
+  postEditor: null,
+  postErrors: {},
+  postPublishing: false,
+  pendingPost: null,
+  postTimer: null,
+  nextPostId: 1,
+  postStatus: null,
+  deleteConfirmPostId: null,
 };
 
 const iconPaths = {
@@ -57,6 +67,7 @@ const iconPaths = {
   sparkle: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"/>',
   edit: '<path d="m14 5 5 5M4 20l4.2-.9L19 8.3 15.7 5 4.9 15.8 4 20Z"/><path d="M12 20h8"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"/>',
 };
 
 function icon(name, size = 17) {
@@ -108,6 +119,20 @@ function activeAccount() {
 
 function boardForOwner(ownerId) {
   return state.boards.find((board) => board.ownerId === ownerId) || null;
+}
+
+function postDraftKey(authorId, boardId, postId = null) {
+  return `${authorId}::${boardId}::${postId || 'new'}`;
+}
+
+function releaseDraftMedia(draft) {
+  if (draft?.media?.isNew && draft.media.url?.startsWith('blob:')) {
+    URL.revokeObjectURL(draft.media.url);
+  }
+}
+
+function formatPostDate(timestamp) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp));
 }
 
 function brand(linked = true) {
@@ -267,10 +292,20 @@ function renderEmpty(title, copy = '') {
 
 function renderHome() {
   const selected = state.homeTab === 'for-you';
-  const heading = selected ? 'Nothing here yet. Discover artists and start collecting.' : 'You haven’t connected with any artists yet.';
+  const account = activeAccount();
+  const posts = state.posts.slice().sort((left, right) => right.publishedAt - left.publishedAt);
+  const status = state.postStatus?.userId === account?.id
+    ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.postStatus.message)}</p>`
+    : '';
+  const pendingStatus = state.postPublishing && state.pendingPost?.authorId === account?.id
+    ? `<p class="post-saving" role="status">Publishing your post…</p>`
+    : '';
+  const content = selected
+    ? (posts.length ? `<div class="post-list home-feed">${posts.map((post) => renderPostCard(post, 'home')).join('')}</div>` : renderEmpty('Nothing here yet. Discover artists and start collecting.'))
+    : renderEmpty('You haven’t connected with any artists yet.');
   return `<section><p class="eyebrow">A quieter kind of feed</p><h1 class="page-title">Home</h1><p class="page-subtitle">A place for work that stays with you.</p>
     <div class="home-tabs" role="tablist" aria-label="Home feed"><button class="home-tab" type="button" data-action="home-tab" data-tab="for-you" role="tab" aria-selected="${selected}">For You</button><button class="home-tab" type="button" data-action="home-tab" data-tab="my-artists" role="tab" aria-selected="${!selected}">My Artists</button></div>
-    ${renderEmpty(heading)}
+    ${status}${pendingStatus}${content}
   </section>`;
 }
 
@@ -289,6 +324,79 @@ function renderBoardCard(board) {
     <span class="board-card-copy"><span class="board-card-name">${escapeHTML(board.artistName)}</span><span class="board-card-discipline">${escapeHTML(board.discipline)}</span><span class="board-card-bio">${escapeHTML(board.biography)}</span></span>
     ${icon('arrow', 15)}
   </a>`;
+}
+
+function renderPostMedia(media, username) {
+  if (!media) return '';
+  const url = escapeHTML(media.url);
+  if (media.type === 'image') {
+    return `<div class="post-media"><img src="${url}" alt="Image shared by @${escapeHTML(username)}"></div>`;
+  }
+  return `<div class="post-media"><video controls preload="metadata" src="${url}" aria-label="Video shared by @${escapeHTML(username)}"></video></div>`;
+}
+
+function renderPostCard(post) {
+  const board = state.boards.find((entry) => entry.id === post.boardId);
+  if (!board) return '';
+  const account = activeAccount();
+  const ownsPost = account?.role === 'Fan' && account.id === post.authorId;
+  const boardRoute = `/board/${encodeURIComponent(board.id)}`;
+  const editDraft = ownsPost ? state.postDrafts[postDraftKey(account.id, board.id, post.id)] : null;
+  const deleteConfirmation = ownsPost && state.deleteConfirmPostId === post.id;
+  return `<article class="post-card">
+    <div class="post-card-heading">
+      <div class="post-author"><span class="post-avatar" aria-hidden="true">${escapeHTML((post.authorUsername[0] || 'F').toUpperCase())}</span><span><span class="post-author-name">@${escapeHTML(post.authorUsername)}</span><span class="post-date">Published ${escapeHTML(formatPostDate(post.publishedAt))}</span></span></div>
+      <a class="post-board-link" href="${hrefFor(boardRoute)}" data-route="${boardRoute}">On ${escapeHTML(board.artistName)}’s board ${icon('arrow', 12)}</a>
+    </div>
+    ${post.content ? `<p class="post-content">${escapeHTML(post.content)}</p>` : ''}
+    ${renderPostMedia(post.media, post.authorUsername)}
+    ${ownsPost && editDraft ? `<div class="post-draft-inline"><span>Unpublished edits saved in this tab.</span><div><button class="text-button" type="button" data-action="resume-post-draft" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">Resume editing</button><button class="text-button text-danger" type="button" data-action="discard-saved-post-draft" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">Discard draft</button></div></div>` : ''}
+    ${ownsPost ? (state.postPublishing
+      ? `<span class="post-saving" role="status">${state.pendingPost?.postId === post.id ? 'Saving changes…' : 'Please wait for the post to finish publishing…'}</span>`
+      : deleteConfirmation
+      ? `<div class="post-delete-confirm" role="alert"><span>Delete this post?</span><button class="text-button text-danger" type="button" data-action="confirm-delete-post" data-post-id="${escapeHTML(post.id)}">Delete</button><button class="text-button" type="button" data-action="cancel-delete-post">Cancel</button></div>`
+      : `<div class="post-actions"><button class="text-button" type="button" data-action="edit-post" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">${icon('edit', 13)} Edit</button><button class="text-button text-danger" type="button" data-action="request-delete-post" data-post-id="${escapeHTML(post.id)}">${icon('trash', 13)} Delete</button></div>`) : ''}
+  </article>`;
+}
+
+function renderPostForm(board, editor, draft) {
+  const editing = Boolean(editor.postId);
+  const error = state.postErrors[editor.key] || '';
+  const disabled = state.postPublishing ? 'disabled' : '';
+  const mediaPreview = draft.media
+    ? `<div class="post-draft-media">${renderPostMedia(draft.media, activeAccount()?.username || '')}<div class="post-draft-media-info"><span>${draft.media.type === 'image' ? 'Image' : 'Video'} attached${draft.media.name ? ` · ${escapeHTML(draft.media.name)}` : ''}</span><button class="text-button text-danger" type="button" data-action="remove-post-media" ${disabled}>Remove media</button></div></div>`
+    : '';
+  return `<div class="post-composer">
+    <p class="eyebrow">${editing ? 'Edit your post' : 'Add to the conversation'}</p>
+    <form data-form="post" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(editor.postId || '')}" novalidate ${state.postPublishing ? 'aria-busy="true"' : ''}>
+      <label class="field-label">Your post<textarea class="field-input field-textarea post-textarea" name="postContent" rows="5" maxlength="2000" placeholder="Share something with this artist’s community" aria-invalid="${Boolean(error)}" data-post-content ${disabled}>${escapeHTML(draft.content)}</textarea></label>
+      ${error ? `<p class="inline-error" data-post-error role="alert">${escapeHTML(error)}</p>` : ''}
+      <label class="field-label post-upload-label">Add an image or video <span class="optional-label">(optional)</span><input class="file-input" type="file" data-post-media accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" ${disabled}><span class="field-hint">Images up to 10 MB; MP4 or WebM videos up to 25 MB.</span></label>
+      ${mediaPreview}
+      <div class="post-form-actions">
+        <button class="primary-button" type="submit" ${disabled}>${state.postPublishing ? `<span class="registration-loading"><span class="loading-dot"></span>${editing ? 'Saving…' : 'Publishing…'}</span>` : `${editing ? 'Save changes' : 'Publish post'} ${icon('arrow', 14)}`}</button>
+        <button class="quiet-button" type="button" data-action="save-post-draft" ${disabled}>Save draft</button>
+        <button class="text-button" type="button" data-action="discard-current-post-draft" ${disabled}>${editing ? 'Discard changes' : 'Discard draft'}</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+function renderBoardComposer(board) {
+  const account = activeAccount();
+  if (account?.role !== 'Fan') return '';
+  const editor = state.postEditor;
+  if (editor?.boardId === board.id && editor.authorId === account.id) {
+    return renderPostForm(board, editor, state.postDrafts[editor.key]);
+  }
+  if (state.postPublishing) {
+    return `<p class="post-saving" role="status">Publishing your post…</p>`;
+  }
+  const draft = state.postDrafts[postDraftKey(account.id, board.id)];
+  if (draft) {
+    return `<div class="saved-post-draft"><div><p class="draft-label">Draft</p><p class="draft-copy">${draft.content ? escapeHTML(draft.content.slice(0, 140)) : draft.media ? `${draft.media.type === 'image' ? 'Image' : 'Video'} attached` : 'An empty draft saved in this tab'}</p></div><button class="quiet-button" type="button" data-action="resume-post-draft" data-board-id="${escapeHTML(board.id)}">Continue draft ${icon('arrow', 14)}</button><button class="text-button text-danger" type="button" data-action="discard-saved-post-draft" data-board-id="${escapeHTML(board.id)}">Discard</button></div>`;
+  }
+  return `<div class="post-create-trigger"><button class="primary-button" type="button" data-action="start-post" data-board-id="${escapeHTML(board.id)}">${icon('plus', 15)} Write a post</button></div>`;
 }
 
 function renderExploreResults() {
@@ -387,8 +495,13 @@ function renderBoardDetail(boardId) {
     return `<section><p class="eyebrow">Artist board</p><h1 class="page-title">Board not found.</h1><p class="page-subtitle">This board isn’t available in this session.</p>${renderEmpty('No board found.') }<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Back to Explore ${icon('arrow', 14)}</a></div></section>`;
   }
   const owner = activeAccount()?.role === 'Artist' && activeAccount()?.id === board.ownerId;
+  const account = activeAccount();
   const ownerAccount = state.accounts.find((account) => account.id === board.ownerId);
   const username = ownerAccount ? `@${escapeHTML(ownerAccount.username)}` : '';
+  const posts = state.posts.filter((post) => post.boardId === board.id).sort((left, right) => right.publishedAt - left.publishedAt);
+  const postStatus = state.postStatus?.boardId === board.id && state.postStatus?.userId === account?.id
+    ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.postStatus.message)}</p>`
+    : '';
   return `<section><p class="eyebrow">Artist board</p>
     ${owner && state.boardSuccessId === board.id ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.boardSuccess)}</p>` : ''}
     <div class="board-detail">
@@ -397,7 +510,9 @@ function renderBoardDetail(boardId) {
         ${owner ? `<button class="quiet-button board-edit-button" type="button" data-action="edit-own-board">${icon('edit', 15)} Edit board information</button>` : ''}
       </div>
     </div>
-    <div class="board-content-empty">${renderEmpty('This board is empty.', 'There are no posts here yet.')}</div>
+    ${postStatus}
+    ${renderBoardComposer(board)}
+    ${posts.length ? `<div class="post-list board-post-list">${posts.map((post) => renderPostCard(post)).join('')}</div>` : `<div class="board-content-empty">${renderEmpty('This board is empty.', 'There are no posts here yet.')}</div>`}
   </section>`;
 }
 
@@ -606,6 +721,164 @@ function submitBoard(form) {
   }, 550);
 }
 
+function startPostComposer(boardId, postId = null) {
+  const account = activeAccount();
+  const board = state.boards.find((entry) => entry.id === boardId);
+  if (!account || account.role !== 'Fan' || !board || state.postPublishing) return;
+  const existing = postId ? state.posts.find((post) => post.id === postId && post.boardId === board.id) : null;
+  if (postId && (!existing || existing.authorId !== account.id)) return;
+  const key = postDraftKey(account.id, board.id, existing?.id || null);
+  if (!state.postDrafts[key]) {
+    state.postDrafts[key] = existing
+      ? { authorId: account.id, boardId: board.id, postId: existing.id, content: existing.content, media: existing.media }
+      : { authorId: account.id, boardId: board.id, postId: null, content: '', media: null };
+  }
+  state.postEditor = { boardId: board.id, postId: existing?.id || null, authorId: account.id, key };
+  state.postErrors[key] = '';
+  state.postStatus = null;
+  state.deleteConfirmPostId = null;
+  navigate(`/board/${encodeURIComponent(board.id)}`);
+}
+
+function discardPostDraft(authorId, boardId, postId = null) {
+  const key = postDraftKey(authorId, boardId, postId);
+  const draft = state.postDrafts[key];
+  releaseDraftMedia(draft);
+  delete state.postDrafts[key];
+  delete state.postErrors[key];
+  if (state.postEditor?.key === key) state.postEditor = null;
+}
+
+function deletePost(postId) {
+  const account = activeAccount();
+  const post = state.posts.find((entry) => entry.id === postId);
+  if (!account || account.role !== 'Fan' || !post || post.authorId !== account.id || (state.postPublishing && state.pendingPost?.postId === post.id)) return;
+
+  for (const [key, draft] of Object.entries(state.postDrafts)) {
+    if (draft.postId === post.id) {
+      releaseDraftMedia(draft);
+      delete state.postDrafts[key];
+      delete state.postErrors[key];
+    }
+  }
+  if (post.media?.url?.startsWith('blob:')) URL.revokeObjectURL(post.media.url);
+  state.posts = state.posts.filter((entry) => entry.id !== post.id);
+  if (state.postEditor?.postId === post.id) state.postEditor = null;
+  state.deleteConfirmPostId = null;
+  state.postStatus = { boardId: post.boardId, userId: account.id, message: 'Post deleted.' };
+  render();
+}
+
+function submitPost(form) {
+  const account = activeAccount();
+  const board = state.boards.find((entry) => entry.id === form.dataset.boardId);
+  const postId = form.dataset.postId || null;
+  const existing = postId ? state.posts.find((post) => post.id === postId && post.boardId === board?.id) : null;
+  if (!account || account.role !== 'Fan' || !board) return;
+
+  const key = postDraftKey(account.id, board.id, postId);
+  const draft = state.postDrafts[key] || { authorId: account.id, boardId: board.id, postId, content: '', media: null };
+  const formData = new FormData(form);
+  const content = String(formData.get('postContent') || '');
+  const errors = {};
+
+  if (postId && (!existing || existing.authorId !== account.id)) errors.form = 'You can only edit your own posts.';
+  if (state.postErrors[key]) errors.form = state.postErrors[key];
+  if (!errors.form && content.length > 2000) errors.form = 'Posts must be 2,000 characters or fewer.';
+  if (!errors.form && !content.trim() && !draft.media) errors.form = 'Add text or attach an image or video before publishing.';
+
+  state.postDrafts[key] = { ...draft, content };
+  state.postErrors[key] = errors.form || '';
+  if (Object.keys(errors).length) {
+    render();
+    app.querySelector('[data-post-content]')?.focus();
+    return;
+  }
+
+  const post = {
+    id: existing?.id || `post-${state.nextPostId++}`,
+    boardId: board.id,
+    authorId: account.id,
+    authorUsername: account.username,
+    content: content.trim(),
+    media: draft.media ? { ...draft.media, isNew: false } : null,
+    publishedAt: existing?.publishedAt || Date.now(),
+  };
+  state.pendingPost = { key, postId: existing?.id || null, boardId: board.id, authorId: account.id, post };
+  state.postPublishing = true;
+  render();
+  state.postTimer = window.setTimeout(() => {
+    const pending = state.pendingPost;
+    if (!pending) return;
+    const oldPost = pending.postId ? state.posts.find((entry) => entry.id === pending.postId) : null;
+    if (pending.postId && oldPost?.media?.url && oldPost.media.url !== pending.post.media?.url && oldPost.media.url.startsWith('blob:')) {
+      URL.revokeObjectURL(oldPost.media.url);
+    }
+    state.posts = pending.postId
+      ? state.posts.map((entry) => entry.id === pending.postId && entry.authorId === pending.authorId ? pending.post : entry)
+      : [pending.post, ...state.posts];
+    delete state.postDrafts[pending.key];
+    delete state.postErrors[pending.key];
+    if (state.postEditor?.key === pending.key) state.postEditor = null;
+    state.postStatus = {
+      boardId: pending.boardId,
+      userId: pending.authorId,
+      message: pending.postId ? 'Your changes have been published.' : 'Your post is live.',
+    };
+    state.postPublishing = false;
+    state.pendingPost = null;
+    state.postTimer = null;
+    state.deleteConfirmPostId = null;
+    state.homeTab = 'for-you';
+    render();
+  }, 500);
+}
+
+function selectPostMedia(input) {
+  const account = activeAccount();
+  const editor = state.postEditor;
+  const file = input.files?.[0];
+  if (!account || account.role !== 'Fan' || !editor || editor.authorId !== account.id || !file) return;
+  const key = editor.key;
+  const draft = state.postDrafts[key];
+  const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+  const videoTypes = ['video/mp4', 'video/webm'];
+  const type = imageTypes.includes(file.type) ? 'image' : videoTypes.includes(file.type) ? 'video' : null;
+  const errors = type
+    ? ''
+    : 'Choose a PNG, JPG, WebP, GIF, MP4, or WebM file.';
+  if (errors) {
+    state.postErrors[key] = errors;
+    render();
+    return;
+  }
+  const maxBytes = type === 'image' ? 10 * 1024 * 1024 : 25 * 1024 * 1024;
+  if (file.size === 0) {
+    state.postErrors[key] = 'The selected file is empty.';
+    render();
+    return;
+  }
+  if (file.size > maxBytes) {
+    state.postErrors[key] = type === 'image' ? 'Images must be 10 MB or smaller.' : 'Videos must be 25 MB or smaller.';
+    render();
+    return;
+  }
+
+  try {
+    const url = URL.createObjectURL(file);
+    releaseDraftMedia(draft);
+    state.postDrafts[key] = {
+      ...draft,
+      media: { file, url, type, name: file.name, isNew: true },
+    };
+    state.postErrors[key] = '';
+    render();
+  } catch {
+    state.postErrors[key] = 'This file could not be prepared. Try another file.';
+    render();
+  }
+}
+
 app?.addEventListener('input', (event) => {
   const target = event.target;
   if (target instanceof HTMLInputElement && ['name', 'username', 'email'].includes(target.name)) {
@@ -624,6 +897,20 @@ app?.addEventListener('input', (event) => {
     }
     if (state.boardErrors.form) delete state.boardErrors.form;
   }
+  if (target instanceof HTMLTextAreaElement && target.matches('[data-post-content]')) {
+    const account = activeAccount();
+    const form = target.closest('form[data-form="post"]');
+    if (account?.role === 'Fan' && form) {
+      const key = postDraftKey(account.id, form.dataset.boardId, form.dataset.postId || null);
+      const draft = state.postDrafts[key];
+      if (draft) state.postDrafts[key] = { ...draft, content: target.value };
+      if (state.postErrors[key]) {
+        state.postErrors[key] = '';
+        target.removeAttribute('aria-invalid');
+        app.querySelector('[data-post-error]')?.remove();
+      }
+    }
+  }
   if (target instanceof HTMLInputElement && target.matches('[data-explore-search]')) {
     state.exploreQuery = target.value;
     const results = app.querySelector('#explore-results');
@@ -635,7 +922,12 @@ app?.addEventListener('input', (event) => {
 
 app?.addEventListener('change', (event) => {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement) || !target.matches('[data-board-image]')) return;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.matches('[data-post-media]')) {
+    selectPostMedia(target);
+    return;
+  }
+  if (!target.matches('[data-board-image]')) return;
   const file = target.files?.[0];
   if (!file) return;
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
@@ -679,6 +971,7 @@ app?.addEventListener('submit', (event) => {
   event.preventDefault();
   if (form.dataset.form === 'registration' && !state.loading) submitRegistration(form);
   else if (form.dataset.form === 'board' && !state.boardLoading) submitBoard(form);
+  else if (form.dataset.form === 'post' && !state.postPublishing) submitPost(form);
 });
 
 app?.addEventListener('click', (event) => {
@@ -765,6 +1058,56 @@ app?.addEventListener('click', (event) => {
     state.boardImageReadToken += 1;
     state.boardImageLoading = false;
     render();
+  } else if (action === 'start-post' || action === 'edit-post' || action === 'resume-post-draft') {
+    startPostComposer(target.dataset.boardId, target.dataset.postId || null);
+  } else if (action === 'save-post-draft') {
+    const editor = state.postEditor;
+    const account = activeAccount();
+    if (editor && account?.role === 'Fan' && editor.authorId === account.id) {
+      state.postErrors[editor.key] = '';
+      state.postEditor = null;
+      state.postStatus = { boardId: editor.boardId, userId: account.id, message: 'Draft saved in this tab.' };
+      render();
+    }
+  } else if (action === 'discard-current-post-draft') {
+    const editor = state.postEditor;
+    const account = activeAccount();
+    if (editor && account?.role === 'Fan' && editor.authorId === account.id) {
+      discardPostDraft(account.id, editor.boardId, editor.postId);
+      state.postStatus = { boardId: editor.boardId, userId: account.id, message: 'Draft discarded.' };
+      render();
+    }
+  } else if (action === 'discard-saved-post-draft') {
+    const account = activeAccount();
+    const board = state.boards.find((entry) => entry.id === target.dataset.boardId);
+    const postId = target.dataset.postId || null;
+    const key = account?.role === 'Fan' && board ? postDraftKey(account.id, board.id, postId) : '';
+    if (account?.role === 'Fan' && board && state.postDrafts[key]) {
+      discardPostDraft(account.id, board.id, postId);
+      state.postStatus = { boardId: board.id, userId: account.id, message: 'Draft discarded.' };
+      render();
+    }
+  } else if (action === 'remove-post-media') {
+    const editor = state.postEditor;
+    const draft = editor && state.postDrafts[editor.key];
+    if (editor && draft && activeAccount()?.id === editor.authorId) {
+      releaseDraftMedia(draft);
+      state.postDrafts[editor.key] = { ...draft, media: null };
+      state.postErrors[editor.key] = '';
+      render();
+    }
+  } else if (action === 'request-delete-post') {
+    const account = activeAccount();
+    const post = state.posts.find((entry) => entry.id === target.dataset.postId);
+    if (!state.postPublishing && account?.role === 'Fan' && post?.authorId === account.id) {
+      state.deleteConfirmPostId = post.id;
+      render();
+    }
+  } else if (action === 'cancel-delete-post') {
+    state.deleteConfirmPostId = null;
+    render();
+  } else if (action === 'confirm-delete-post') {
+    deletePost(target.dataset.postId);
   } else if (action === 'clear-explore-search') {
     state.exploreQuery = '';
     render();

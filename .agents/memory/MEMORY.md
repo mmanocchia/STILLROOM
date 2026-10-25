@@ -1,0 +1,1 @@
+- [Stillroom prototype scope](stillroom-prototype-scope.md) — Keep the app vanilla and memory-only; do not seed demo content or add server persistence without a user request.
