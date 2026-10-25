@@ -12,6 +12,7 @@ const navItems = [
 
 const state = {
   accounts: [],
+  boards: [],
   activeAccountId: null,
   route: getRoute(),
   pendingRole: null,
@@ -26,6 +27,17 @@ const state = {
   editingProfile: false,
   profileDraft: '',
   profileError: '',
+  exploreQuery: '',
+  boardDraft: null,
+  boardErrors: {},
+  boardLoading: false,
+  boardTimer: null,
+  pendingBoard: null,
+  boardImageLoading: false,
+  boardImageError: '',
+  boardImageReadToken: 0,
+  boardSuccess: '',
+  boardSuccessId: null,
 };
 
 const iconPaths = {
@@ -43,6 +55,8 @@ const iconPaths = {
   check: '<path d="m5 12 4 4L19 6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   sparkle: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"/>',
+  edit: '<path d="m14 5 5 5M4 20l4.2-.9L19 8.3 15.7 5 4.9 15.8 4 20Z"/><path d="M12 20h8"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/>',
 };
 
 function icon(name, size = 17) {
@@ -67,6 +81,7 @@ function hrefFor(path) {
 
 function navigate(path, { replace = false } = {}) {
   if (state.loading && path !== state.route) cancelRegistration();
+  if (state.boardLoading && path !== state.route) cancelBoardOperation();
   if (replace) history.replaceState({}, '', hrefFor(path));
   else if (getRoute() !== path) history.pushState({}, '', hrefFor(path));
   state.route = path;
@@ -80,8 +95,19 @@ function cancelRegistration() {
   state.pendingAccount = null;
 }
 
+function cancelBoardOperation() {
+  if (state.boardTimer) window.clearTimeout(state.boardTimer);
+  state.boardTimer = null;
+  state.boardLoading = false;
+  state.pendingBoard = null;
+}
+
 function activeAccount() {
   return state.accounts.find((account) => account.id === state.activeAccountId) || null;
+}
+
+function boardForOwner(ownerId) {
+  return state.boards.find((board) => board.ownerId === ownerId) || null;
 }
 
 function brand(linked = true) {
@@ -202,7 +228,10 @@ function renderConfirmation() {
 }
 
 function navLink(item, currentRoute) {
-  const active = item.path === currentRoute || (item.path === '/home' && currentRoute === '/');
+  const active = item.path === currentRoute
+    || (item.path === '/home' && currentRoute === '/')
+    || (item.path === '/artists' && currentRoute.startsWith('/artists/'))
+    || (item.path === '/explore' && currentRoute.startsWith('/board/'));
   return `<a class="nav-link" href="${hrefFor(item.path)}" data-route="${item.path}" ${active ? 'aria-current="page"' : ''}>${icon(item.icon)}<span>${item.label}</span></a>`;
 }
 
@@ -245,12 +274,131 @@ function renderHome() {
   </section>`;
 }
 
+function boardPortrait(board, large = false) {
+  const className = large ? 'board-portrait board-portrait-large' : 'board-portrait';
+  if (board.profileImage) {
+    return `<img class="${className}" src="${escapeHTML(board.profileImage)}" alt="${escapeHTML(board.artistName)}">`;
+  }
+  return `<span class="${className} board-portrait-initial" aria-hidden="true">${escapeHTML((board.artistName.trim()[0] || 'A').toUpperCase())}</span>`;
+}
+
+function renderBoardCard(board) {
+  const route = `/board/${encodeURIComponent(board.id)}`;
+  return `<a class="board-card" href="${hrefFor(route)}" data-route="${route}">
+    ${boardPortrait(board)}
+    <span class="board-card-copy"><span class="board-card-name">${escapeHTML(board.artistName)}</span><span class="board-card-discipline">${escapeHTML(board.discipline)}</span><span class="board-card-bio">${escapeHTML(board.biography)}</span></span>
+    ${icon('arrow', 15)}
+  </a>`;
+}
+
+function renderExploreResults() {
+  const query = state.exploreQuery.trim().toLocaleLowerCase();
+  const matches = state.boards.filter((board) => {
+    const owner = state.accounts.find((account) => account.id === board.ownerId);
+    return [board.artistName, board.discipline, board.biography, owner?.username]
+      .filter(Boolean)
+      .some((value) => value.toLocaleLowerCase().includes(query));
+  });
+
+  if (!state.boards.length) {
+    return renderEmpty('No artist boards yet.', 'When artists create their boards, you’ll find them here.');
+  }
+  if (!matches.length) {
+    return `<div id="explore-results-empty">${renderEmpty('No boards match your search.', 'Try a different artist name or discipline.')}<div class="empty-action"><button class="quiet-button" type="button" data-action="clear-explore-search">Clear search</button></div></div>`;
+  }
+  return `<div class="board-results-heading"><span class="eyebrow">${matches.length} ${matches.length === 1 ? 'board' : 'boards'}</span></div><div class="board-grid">${matches.map(renderBoardCard).join('')}</div>`;
+}
+
 function renderExplore() {
-  return `<section><p class="eyebrow">Find your next room</p><h1 class="page-title">Explore</h1><p class="page-subtitle">A home for artists and the work they make.</p><hr class="section-rule">${renderEmpty('No artist boards to explore yet.', 'There are no artist boards in this preview yet.')}</section>`;
+  return `<section><p class="eyebrow">Find your next room</p><h1 class="page-title">Explore</h1><p class="page-subtitle">Discover artist boards by name, discipline, or description.</p>
+    <label class="explore-search">${icon('search', 16)}<input type="search" data-explore-search aria-label="Search artist boards" placeholder="Search artists or disciplines" value="${escapeHTML(state.exploreQuery)}"><button class="icon-button" type="button" data-action="clear-explore-search" aria-label="Clear search" ${state.exploreQuery ? '' : 'hidden'}>${icon('close', 15)}</button></label>
+    <div id="explore-results" aria-live="polite">${renderExploreResults()}</div>
+  </section>`;
 }
 
 function renderArtists() {
-  return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">The artists you choose to keep close.</p><hr class="section-rule">${renderEmpty("You haven't connected with any artists yet.")}</section>`;
+  const account = activeAccount();
+  if (account?.role !== 'Artist') {
+    return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">The artists you choose to keep close.</p>${renderEmpty("You haven't connected with any artists yet.")}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artist boards ${icon('arrow', 14)}</a></div></section>`;
+  }
+
+  const board = boardForOwner(account.id);
+  if (!board) {
+    return `<section><p class="eyebrow">Your artist space</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">Create your personal board so fans can find your work.</p>
+      <div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon('image', 17)}</span><p class="empty-title">You don’t have a board yet.</p><p class="empty-copy">Create one personal board for your name, discipline, and biography.</p><button class="primary-button empty-cta" type="button" data-action="create-board">Create your board ${icon('arrow', 14)}</button></div></div>
+    </section>`;
+  }
+
+  return `<section><p class="eyebrow">Your artist space</p><div class="page-heading-row"><div><h1 class="page-title">My Artists</h1><p class="page-subtitle">Your personal artist board.</p></div><button class="quiet-button" type="button" data-action="edit-own-board">${icon('edit', 15)} Edit board</button></div>
+    ${state.boardSuccessId === board.id ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.boardSuccess)}</p>` : ''}
+    <div class="owned-board-card">${renderBoardCard(board)}<span class="owned-board-empty">Your board is empty until fans discover it.</span></div>
+  </section>`;
+}
+
+function boardFieldError(field) {
+  return state.boardErrors[field] ? `<span class="field-error" id="board-error-${field}" role="alert">${escapeHTML(state.boardErrors[field])}</span>` : '';
+}
+
+function renderBoardForm(mode) {
+  const account = activeAccount();
+  const existing = account?.role === 'Artist' ? boardForOwner(account.id) : null;
+  if (!account || account.role !== 'Artist') {
+    return `<section><p class="eyebrow">Artist board</p><h1 class="page-title">Artists only</h1><p class="page-subtitle">Only Artist accounts can create or edit artist boards.</p>${renderEmpty('This action isn’t available for your account type.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/artists')}" data-route="/artists">Back to My Artists</a></div></section>`;
+  }
+  if (mode === 'create' && existing) {
+    return `<section><p class="eyebrow">One personal board</p><h1 class="page-title">Your board already exists.</h1><p class="page-subtitle">Each Artist account can have one personal board.</p><div class="empty-action"><a class="primary-button" href="${hrefFor(`/board/${encodeURIComponent(existing.id)}`)}" data-route="/board/${encodeURIComponent(existing.id)}">View your board ${icon('arrow', 14)}</a></div></section>`;
+  }
+  if (mode === 'edit' && !existing) {
+    return `<section><p class="eyebrow">Artist board</p><h1 class="page-title">No board to edit yet.</h1><p class="page-subtitle">Create your personal board first.</p><div class="empty-action"><button class="primary-button" type="button" data-action="create-board">Create your board ${icon('arrow', 14)}</button></div></section>`;
+  }
+
+  if (!state.boardDraft) {
+    state.boardDraft = existing
+      ? { artistName: existing.artistName, discipline: existing.discipline, biography: existing.biography, profileImage: existing.profileImage || '' }
+      : { artistName: account.name, discipline: '', biography: '', profileImage: '' };
+  }
+  const draft = state.boardDraft;
+  const editing = mode === 'edit';
+  const disabled = state.boardLoading ? 'disabled' : '';
+  const saveDisabled = state.boardLoading || state.boardImageLoading ? 'disabled' : '';
+  const imagePreview = draft.profileImage
+    ? `<div class="board-image-preview"><img src="${escapeHTML(draft.profileImage)}" alt="Selected profile image"><div><p class="preview-title">Profile image selected</p><button class="text-button" type="button" data-action="remove-board-image">Remove image</button></div></div>`
+    : '';
+  return `<section><p class="eyebrow">${editing ? 'Your artist space' : 'Make it yours'}</p><h1 class="page-title">${editing ? 'Edit your board' : 'Create your board'}</h1><p class="page-subtitle">Your board is a quiet introduction. It starts empty, with no posts.</p>
+    <div class="board-form-card">
+      ${state.boardErrors.form ? `<p class="inline-error" role="alert">${escapeHTML(state.boardErrors.form)}</p>` : ''}
+      <form data-form="board" data-mode="${mode}" novalidate ${state.boardLoading || state.boardImageLoading ? 'aria-busy="true"' : ''}>
+        <label class="field-label">Artist name<input class="field-input" name="artistName" value="${escapeHTML(draft.artistName)}" placeholder="The name fans will see" aria-invalid="${Boolean(state.boardErrors.artistName)}" ${state.boardErrors.artistName ? 'aria-describedby="board-error-artistName"' : ''} ${disabled} required>${boardFieldError('artistName')}</label>
+        <label class="field-label">Artistic discipline<input class="field-input" name="discipline" value="${escapeHTML(draft.discipline)}" placeholder="Music, film, photography…" aria-invalid="${Boolean(state.boardErrors.discipline)}" ${state.boardErrors.discipline ? 'aria-describedby="board-error-discipline"' : ''} ${disabled} required>${boardFieldError('discipline')}</label>
+        <label class="field-label">Biography<textarea class="field-input field-textarea" name="biography" rows="5" maxlength="800" placeholder="A few words about your practice and work" aria-invalid="${Boolean(state.boardErrors.biography)}" ${state.boardErrors.biography ? 'aria-describedby="board-error-biography"' : ''} ${disabled} required>${escapeHTML(draft.biography)}</textarea>${boardFieldError('biography')}</label>
+        <label class="field-label">Profile image <span class="optional-label">(optional)</span><input class="file-input" name="profileImage" type="file" accept="image/png,image/jpeg,image/webp" data-board-image ${disabled}><span class="field-hint">PNG, JPG, or WebP. Maximum 4 MB.</span></label>
+        ${state.boardImageLoading ? `<p class="field-hint" role="status">Preparing image…</p>` : ''}
+        ${state.boardImageError ? `<p class="inline-error" role="alert">${escapeHTML(state.boardImageError)}</p>` : ''}
+        ${imagePreview}
+        <div class="board-form-footer"><button class="primary-button" type="submit" ${saveDisabled} data-testid="button-save-board">${state.boardLoading ? `<span class="registration-loading"><span class="loading-dot"></span>${editing ? 'Saving…' : 'Creating…'}</span>` : state.boardImageLoading ? 'Preparing image…' : `${editing ? 'Save changes' : 'Create board'} ${icon('arrow', 14)}`}</button><button class="quiet-button" type="button" data-action="cancel-board-form" ${disabled}>Cancel</button></div>
+      </form>
+    </div>
+  </section>`;
+}
+
+function renderBoardDetail(boardId) {
+  const board = state.boards.find((entry) => entry.id === boardId);
+  if (!board) {
+    return `<section><p class="eyebrow">Artist board</p><h1 class="page-title">Board not found.</h1><p class="page-subtitle">This board isn’t available in this session.</p>${renderEmpty('No board found.') }<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Back to Explore ${icon('arrow', 14)}</a></div></section>`;
+  }
+  const owner = activeAccount()?.role === 'Artist' && activeAccount()?.id === board.ownerId;
+  const ownerAccount = state.accounts.find((account) => account.id === board.ownerId);
+  const username = ownerAccount ? `@${escapeHTML(ownerAccount.username)}` : '';
+  return `<section><p class="eyebrow">Artist board</p>
+    ${owner && state.boardSuccessId === board.id ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.boardSuccess)}</p>` : ''}
+    <div class="board-detail">
+      ${boardPortrait(board, true)}
+      <div class="board-detail-copy"><span class="board-card-discipline">${escapeHTML(board.discipline)}</span><h1 class="page-title">${escapeHTML(board.artistName)}</h1><p class="board-owner-handle">${username}</p><p class="board-biography">${escapeHTML(board.biography)}</p>
+        ${owner ? `<button class="quiet-button board-edit-button" type="button" data-action="edit-own-board">${icon('edit', 15)} Edit board information</button>` : ''}
+      </div>
+    </div>
+    <div class="board-content-empty">${renderEmpty('This board is empty.', 'There are no posts here yet.')}</div>
+  </section>`;
 }
 
 function renderShelves() {
@@ -301,11 +449,22 @@ function render() {
     return;
   }
 
-  if (!navItems.some((item) => item.path === state.route) && state.route !== '/') state.route = '/home';
+  const boardRoute = state.route.match(/^\/board\/([^/]+)$/);
+  const specialRoute = ['/artists/new', '/artists/edit'].includes(state.route) || Boolean(boardRoute);
+  if (!navItems.some((item) => item.path === state.route) && state.route !== '/' && !specialRoute) state.route = '/home';
   let content;
   let title;
   if (state.route === '/explore') { content = renderExplore(); title = 'Explore'; }
   else if (state.route === '/artists') { content = renderArtists(); title = 'My Artists'; }
+  else if (state.route === '/artists/new') { content = renderBoardForm('create'); title = 'Create your board'; }
+  else if (state.route === '/artists/edit') { content = renderBoardForm('edit'); title = 'Edit your board'; }
+  else if (boardRoute) {
+    let boardId = boardRoute[1];
+    try { boardId = decodeURIComponent(boardId); } catch { /* Keep the unmatched route in the not-found state. */ }
+    const board = state.boards.find((entry) => entry.id === boardId);
+    content = renderBoardDetail(boardId);
+    title = board?.artistName || 'Artist board';
+  }
   else if (state.route === '/shelves') { content = renderShelves(); title = 'Shelves'; }
   else if (state.route === '/profile') { content = renderProfile(); title = 'Profile'; }
   else { content = renderHome(); title = 'Stillroom'; }
@@ -372,6 +531,81 @@ function submitRegistration(form) {
   }, 650);
 }
 
+function beginBoardForm(mode) {
+  const account = activeAccount();
+  if (!account || account.role !== 'Artist') {
+    navigate(mode === 'edit' ? '/artists/edit' : '/artists/new');
+    return;
+  }
+  const existing = boardForOwner(account.id);
+  state.boardDraft = mode === 'edit' && existing
+    ? { artistName: existing.artistName, discipline: existing.discipline, biography: existing.biography, profileImage: existing.profileImage || '' }
+    : { artistName: account.name, discipline: '', biography: '', profileImage: '' };
+  state.boardErrors = {};
+  state.boardImageError = '';
+  state.boardImageLoading = false;
+  state.boardImageReadToken += 1;
+  state.boardSuccess = '';
+  state.boardSuccessId = null;
+  navigate(mode === 'edit' ? '/artists/edit' : '/artists/new');
+}
+
+function submitBoard(form) {
+  const account = activeAccount();
+  const mode = form.dataset.mode;
+  const existing = account?.role === 'Artist' ? boardForOwner(account.id) : null;
+  const formData = new FormData(form);
+  const artistName = String(formData.get('artistName') || '').trim();
+  const discipline = String(formData.get('discipline') || '').trim();
+  const biography = String(formData.get('biography') || '').trim();
+  const errors = {};
+
+  if (!account || account.role !== 'Artist') errors.form = 'Only Artist accounts can create or edit boards.';
+  if (mode === 'create' && existing) errors.form = 'Each Artist account can create only one personal board.';
+  if (mode === 'edit' && (!existing || existing.ownerId !== account?.id)) errors.form = 'You can only edit a board you own.';
+  if (!artistName) errors.artistName = 'Enter the artist name for this board.';
+  if (!discipline) errors.discipline = 'Add an artistic discipline.';
+  if (!biography) errors.biography = 'Add a short biography.';
+
+  state.boardDraft = { ...(state.boardDraft || {}), artistName, discipline, biography };
+  state.boardErrors = errors;
+  if (Object.keys(errors).length) {
+    render();
+    app.querySelector('[aria-invalid="true"]')?.focus();
+    return;
+  }
+
+  const board = {
+    id: existing?.id || `board-${account.id}`,
+    ownerId: account.id,
+    artistName,
+    discipline,
+    biography,
+    profileImage: state.boardDraft.profileImage || '',
+  };
+  state.pendingBoard = { mode, board };
+  state.boardLoading = true;
+  render();
+  state.boardTimer = window.setTimeout(() => {
+    if (!state.pendingBoard) return;
+    const pending = state.pendingBoard;
+    if (pending.mode === 'edit') {
+      state.boards = state.boards.map((entry) => entry.id === pending.board.id && entry.ownerId === account.id ? pending.board : entry);
+      state.boardSuccess = 'Board information saved.';
+    } else {
+      state.boards.push(pending.board);
+      state.boardSuccess = 'Your artist board is ready.';
+    }
+    state.boardSuccessId = pending.board.id;
+    state.pendingBoard = null;
+    state.boardTimer = null;
+    state.boardLoading = false;
+    state.boardDraft = null;
+    state.boardErrors = {};
+    navigate(`/board/${encodeURIComponent(pending.board.id)}`, { replace: true });
+  }, 550);
+}
+
 app?.addEventListener('input', (event) => {
   const target = event.target;
   if (target instanceof HTMLInputElement && ['name', 'username', 'email'].includes(target.name)) {
@@ -380,13 +614,71 @@ app?.addEventListener('input', (event) => {
   if (target instanceof HTMLInputElement && target.name === 'profile-name') {
     state.profileDraft = target.value;
   }
+  if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && ['artistName', 'discipline', 'biography'].includes(target.name)) {
+    state.boardDraft = { ...(state.boardDraft || {}), [target.name]: target.value };
+    if (state.boardErrors[target.name]) {
+      delete state.boardErrors[target.name];
+      target.removeAttribute('aria-invalid');
+      target.removeAttribute('aria-describedby');
+      app.querySelector(`#board-error-${target.name}`)?.remove();
+    }
+    if (state.boardErrors.form) delete state.boardErrors.form;
+  }
+  if (target instanceof HTMLInputElement && target.matches('[data-explore-search]')) {
+    state.exploreQuery = target.value;
+    const results = app.querySelector('#explore-results');
+    if (results) results.innerHTML = renderExploreResults();
+    const clearButton = app.querySelector('[data-action="clear-explore-search"]');
+    if (clearButton) clearButton.hidden = !state.exploreQuery;
+  }
+});
+
+app?.addEventListener('change', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) || !target.matches('[data-board-image]')) return;
+  const file = target.files?.[0];
+  if (!file) return;
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    state.boardImageError = 'Choose a PNG, JPG, or WebP image.';
+    render();
+    return;
+  }
+  if (file.size > 4 * 1024 * 1024) {
+    state.boardImageError = 'Choose an image smaller than 4 MB.';
+    render();
+    return;
+  }
+
+  state.boardImageError = '';
+  state.boardImageLoading = true;
+  const readToken = ++state.boardImageReadToken;
+  render();
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (readToken !== state.boardImageReadToken || !state.boardDraft) return;
+    if (typeof reader.result !== 'string' || !state.boardDraft) {
+      state.boardImageError = 'The selected image could not be read.';
+    } else {
+      state.boardDraft.profileImage = reader.result;
+    }
+    state.boardImageLoading = false;
+    render();
+  };
+  reader.onerror = () => {
+    if (readToken !== state.boardImageReadToken || !state.boardDraft) return;
+    state.boardImageError = 'The selected image could not be read.';
+    state.boardImageLoading = false;
+    render();
+  };
+  reader.readAsDataURL(file);
 });
 
 app?.addEventListener('submit', (event) => {
   const form = event.target;
-  if (!(form instanceof HTMLFormElement) || form.dataset.form !== 'registration') return;
+  if (!(form instanceof HTMLFormElement)) return;
   event.preventDefault();
-  if (!state.loading) submitRegistration(form);
+  if (form.dataset.form === 'registration' && !state.loading) submitRegistration(form);
+  else if (form.dataset.form === 'board' && !state.boardLoading) submitBoard(form);
 });
 
 app?.addEventListener('click', (event) => {
@@ -456,11 +748,32 @@ app?.addEventListener('click', (event) => {
   } else if (action === 'add-account') {
     state.editingProfile = false;
     beginRegistration(null);
+  } else if (action === 'create-board') {
+    beginBoardForm('create');
+  } else if (action === 'edit-own-board') {
+    beginBoardForm('edit');
+  } else if (action === 'cancel-board-form') {
+    state.boardDraft = null;
+    state.boardErrors = {};
+    state.boardImageError = '';
+    state.boardImageLoading = false;
+    state.boardImageReadToken += 1;
+    navigate('/artists');
+  } else if (action === 'remove-board-image') {
+    state.boardDraft = { ...(state.boardDraft || {}), profileImage: '' };
+    state.boardImageError = '';
+    state.boardImageReadToken += 1;
+    state.boardImageLoading = false;
+    render();
+  } else if (action === 'clear-explore-search') {
+    state.exploreQuery = '';
+    render();
   }
 });
 
 window.addEventListener('popstate', () => {
   if (state.loading) cancelRegistration();
+  if (state.boardLoading) cancelBoardOperation();
   state.route = getRoute();
   render();
 });
