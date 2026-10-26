@@ -6,7 +6,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   --paper: #ffffff;
-  --paper-deep: #eaf7f7;
+  --paper-deep: #ffffff;
   --ink: #263437;
   --muted: #627579;
   --faint: #819397;
@@ -16,7 +16,7 @@
   --rust-dark: #19736f;
   --aqua: #dff4f1;
   --turquoise: #258f89;
-  --sky: #eaf4fb;
+  --sky: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -175,7 +175,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   text-align: left;
   cursor: pointer;
 }
-.account-choice:hover { border-color: var(--rust); background: #f1f9f9; }
+.account-choice:hover { border-color: var(--rust); background: #fff; }
 .account-choice-row { display: flex; min-width: 0; align-items: stretch; gap: 8px; }
 .account-choice-row .account-choice { min-width: 0; flex: 1; }
 .account-choice-profile-link { display: flex; min-width: 70px; align-items: center; justify-content: center; color: var(--muted); font-size: 10px; }
@@ -234,7 +234,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .form-note { margin: 20px 0 15px; color: var(--faint); font-size: 9px; line-height: 1.6; }
 .registration-submit { width: 100%; }
 .registration-loading { display: inline-flex; align-items: center; gap: 9px; }
-.loading-dot { width: 10px; height: 10px; border-radius: 50%; background: #f2d8c8; animation: breathe .7s ease-in-out infinite alternate; }
+.loading-dot { width: 10px; height: 10px; border-radius: 50%; background: #7bc9c4; animation: breathe .7s ease-in-out infinite alternate; }
 @keyframes breathe { to { opacity: .35; transform: scale(.7); } }
 .confirmation-layout { display: grid; min-height: calc(100vh - 92px); place-items: center; padding: 38px 24px 80px; }
 .confirmation-card { max-width: 540px; width: 100%; padding: 38px; border: 1px solid var(--line); background: rgba(255,255,255,.13); }
@@ -268,7 +268,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   font-size: 12px;
   transition: background .15s ease, color .15s ease;
 }
-.nav-link:hover { background: #edf7f7; color: var(--ink); }
+.nav-link:hover { background: #fff; color: var(--ink); }
 .nav-link[aria-current="page"] { background: var(--paper-deep); color: var(--ink); }
 .nav-link[aria-current="page"] .icon { color: var(--rust); }
 .sidebar-bottom { margin-top: auto; }
@@ -523,7 +523,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .repost-button:disabled, .comment-form-actions button:disabled { cursor: wait; opacity: .55; }
 .post-comments { margin-top: 12px; border-top: 1px solid var(--line); }
 .comments-toggle { min-height: 34px; padding-left: 0; color: var(--rust); }
-.comment-thread { margin-top: 5px; padding: 15px; border: 1px solid var(--line); background: rgba(234,244,251,.72); }
+.comment-thread { margin-top: 5px; padding: 15px; border: 1px solid var(--line); background: #fff; }
 .comment-list { margin: 0; padding: 0; list-style: none; }
 .comment-item { padding: 13px 0; border-bottom: 1px solid var(--line); }
 .comment-item:first-child { padding-top: 0; }
@@ -1048,4 +1048,33 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .home-page .post-actions { gap: 2px 8px; }
   .home-page .post-actions .text-button,
   .home-page .comments-toggle { font-size: 9px; }
+}
+
+/* Keep the surfaces white; use aqua for borders, marks, and active states. */
+.app-topnav { background: rgba(255, 255, 255, .99); }
+.main-nav .nav-link:hover,
+.main-nav .nav-link[aria-current="page"],
+.app-nav-actions .icon-button:hover,
+.quiet-button:hover,
+.role-option[aria-pressed="true"],
+.empty-state,
+.empty-icon,
+.explore-artist-result:hover,
+.explore-post-result:hover,
+.board-card:hover,
+.shelf-card:hover,
+.explore-artist-mark,
+.board-portrait-initial,
+.shelf-card-mark,
+.shelf-picker,
+.shelf-picker-option:hover,
+.saved-post-draft,
+.switcher-current,
+.switcher-current:hover,
+.account-choice:hover,
+.home-page .post-avatar,
+.home-page .post-media,
+.home-page > .empty-state,
+.home-page .home-empty-explore .quiet-button:hover {
+  background: #fff;
 }
