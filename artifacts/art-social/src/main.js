@@ -513,6 +513,11 @@ function renderHome() {
   const followedIds = new Set(followedArtistIds(account?.id || ''));
   const items = homeFeedItems(selected ? null : followedIds);
   const hasFollowedArtists = followedIds.size > 0;
+  const tabDescription = selected
+    ? 'Fan posts from every Artist Board, newest first.'
+    : account?.role === 'Fan'
+      ? 'Only posts from Artists you have added to My Artists.'
+      : 'A private feed available to Fan accounts.';
   const status = state.postStatus?.userId === account?.id
     ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.postStatus.message)}</p>`
     : '';
@@ -523,7 +528,7 @@ function renderHome() {
   if (items.length) {
     content = `<div class="post-list home-feed">${items.map(renderFeedItem).join('')}</div>`;
   } else if (selected) {
-    content = renderEmpty('Nothing here yet. Discover artists and start collecting.');
+    content = `${renderEmpty('Nothing here yet. Discover artists and start collecting.')}<div class="home-empty-explore"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artists ${icon('arrow', 14)}</a></div>`;
   } else if (!hasFollowedArtists) {
     const title = account?.role === 'Fan' ? "You haven't connected with any artists yet." : 'No artists in My Artists yet.';
     const copy = account?.role === 'Fan' ? 'Follow an artist from their board to see posts here.' : 'My Artists is a private list available to Fan accounts.';
@@ -531,8 +536,8 @@ function renderHome() {
   } else {
     content = `${renderEmpty('No posts from your artists yet.', 'When they share something, it will appear here.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore more artists ${icon('arrow', 14)}</a></div>`;
   }
-  return `<section><p class="eyebrow">A quieter kind of feed</p><h1 class="page-title">Home</h1><p class="page-subtitle">A place for work that stays with you.</p>
-    <div class="home-tabs" role="tablist" aria-label="Home feed"><button class="home-tab" type="button" data-action="home-tab" data-tab="for-you" role="tab" aria-selected="${selected}">For You</button><button class="home-tab" type="button" data-action="home-tab" data-tab="my-artists" role="tab" aria-selected="${!selected}">My Artists</button></div>
+  return `<section class="home-page"><header class="home-intro"><p class="eyebrow">A quieter kind of feed</p><h1 class="page-title">Home</h1><p class="page-subtitle">A place for work that stays with you.</p></header>
+    <div class="home-tab-row"><div class="home-tabs" role="tablist" aria-label="Home feed"><button class="home-tab" type="button" data-action="home-tab" data-tab="for-you" role="tab" aria-selected="${selected}">For You</button><button class="home-tab" type="button" data-action="home-tab" data-tab="my-artists" role="tab" aria-selected="${!selected}">My Artists</button></div><p class="home-tab-context" aria-live="polite">${tabDescription}</p></div>
     ${status}${pendingStatus}${content}
   </section>`;
 }
