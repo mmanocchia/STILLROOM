@@ -14,6 +14,8 @@ const state = {
   accounts: [],
   boards: [],
   posts: [],
+  reposts: [],
+  comments: [],
   followedArtistsByFan: {},
   shelves: [],
   nextShelfId: 1,
@@ -49,9 +51,23 @@ const state = {
   pendingPost: null,
   postTimer: null,
   nextPostId: 1,
+  nextRepostId: 1,
+  nextCommentId: 1,
   postStatus: null,
   deleteConfirmPostId: null,
   followStatus: null,
+  repostConfirm: null,
+  repostPending: null,
+  repostTimer: null,
+  repostStatus: null,
+  expandedCommentPostIds: [],
+  commentDrafts: {},
+  commentErrors: {},
+  commentEditor: null,
+  commentDeleteConfirmId: null,
+  commentPending: null,
+  commentTimer: null,
+  commentStatus: null,
   shelfDraft: null,
   shelfErrors: {},
   shelfLoading: false,
@@ -84,6 +100,7 @@ const iconPaths = {
   edit: '<path d="m14 5 5 5M4 20l4.2-.9L19 8.3 15.7 5 4.9 15.8 4 20Z"/><path d="M12 20h8"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"/>',
+  repost: '<path d="m17 3 4 4-4 4"/><path d="M3 11V9a2 2 0 0 1 2-2h16"/><path d="m7 21-4-4 4-4"/><path d="M21 13v2a2 2 0 0 1-2 2H3"/>',
 };
 
 function icon(name, size = 17) {
@@ -157,6 +174,42 @@ function isFollowingArtist(fanId, artistId) {
 
 function chronologicalPosts(posts) {
   return posts.slice().sort((left, right) => left.publishedAt - right.publishedAt);
+}
+
+function commentDraftKey(userId, postId) {
+  return `${userId}::${postId}`;
+}
+
+function homeFeedItems(followedIds = null) {
+  const items = state.posts
+    .filter(isVisibleFanPost)
+    .map((post) => ({ type: 'post', key: `post:${post.id}`, post, createdAt: post.publishedAt }));
+  for (const repost of state.reposts) {
+    const post = state.posts.find((entry) => entry.id === repost.postId);
+    const reposter = state.accounts.find((entry) => entry.id === repost.userId);
+    if (!post || reposter?.role !== 'Fan' || !isVisibleFanPost(post)) continue;
+    items.push({ type: 'repost', key: `repost:${repost.id}`, post, repost, createdAt: repost.repostedAt });
+  }
+  return items
+    .filter((item) => {
+      if (!followedIds) return true;
+      const board = state.boards.find((entry) => entry.id === item.post.boardId);
+      return board && followedIds.has(board.ownerId);
+    })
+    .sort((left, right) => left.createdAt - right.createdAt);
+}
+
+function accountActivityItems(accountId) {
+  const account = state.accounts.find((entry) => entry.id === accountId);
+  if (!account) return [];
+  const items = state.posts
+    .filter((post) => post.authorId === accountId && isVisibleFanPost(post))
+    .map((post) => ({ type: 'post', key: `post:${post.id}`, post, createdAt: post.publishedAt }));
+  for (const repost of state.reposts.filter((entry) => entry.userId === accountId)) {
+    const post = state.posts.find((entry) => entry.id === repost.postId);
+    if (post && isVisibleFanPost(post)) items.push({ type: 'repost', key: `repost:${repost.id}`, post, repost, createdAt: repost.repostedAt });
+  }
+  return items.sort((left, right) => left.createdAt - right.createdAt);
 }
 
 function isVisibleFanPost(post) {
@@ -363,14 +416,8 @@ function renderShelfPicker() {
 function renderHome() {
   const selected = state.homeTab === 'for-you';
   const account = activeAccount();
-  const fanPosts = state.posts.filter(isVisibleFanPost);
   const followedIds = new Set(followedArtistIds(account?.id || ''));
-  const posts = chronologicalPosts(selected
-    ? fanPosts
-    : fanPosts.filter((post) => {
-      const board = state.boards.find((entry) => entry.id === post.boardId);
-      return board && followedIds.has(board.ownerId);
-    }));
+  const items = homeFeedItems(selected ? null : followedIds);
   const hasFollowedArtists = followedIds.size > 0;
   const status = state.postStatus?.userId === account?.id
     ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.postStatus.message)}</p>`
@@ -379,8 +426,8 @@ function renderHome() {
     ? `<p class="post-saving" role="status">Publishing your post…</p>`
     : '';
   let content;
-  if (posts.length) {
-    content = `<div class="post-list home-feed">${posts.map((post) => renderPostCard(post)).join('')}</div>`;
+  if (items.length) {
+    content = `<div class="post-list home-feed">${items.map(renderFeedItem).join('')}</div>`;
   } else if (selected) {
     content = renderEmpty('Nothing here yet. Discover artists and start collecting.');
   } else if (!hasFollowedArtists) {
@@ -422,6 +469,59 @@ function renderPostMedia(media, username) {
   return `<div class="post-media"><video controls preload="metadata" src="${url}" aria-label="Video shared by @${escapeHTML(username)}"></video></div>`;
 }
 
+function renderCommentForm(post, comment = null) {
+  const account = activeAccount();
+  if (account?.role !== 'Fan') return '';
+  const editing = Boolean(comment);
+  const key = editing ? comment.id : commentDraftKey(account.id, post.id);
+  const value = editing ? state.commentEditor?.content || '' : state.commentDrafts[key] || '';
+  const error = state.commentErrors[key] || '';
+  const pending = state.commentPending;
+  const disabled = pending ? 'disabled' : '';
+  const isPending = pending?.postId === post.id && pending?.userId === account.id
+    && (editing ? pending.commentId === comment.id : pending.action === 'create');
+  return `<form class="comment-form" data-form="comment" data-post-id="${escapeHTML(post.id)}" data-comment-id="${escapeHTML(comment?.id || '')}" novalidate ${isPending ? 'aria-busy="true"' : ''}>
+    <label class="comment-field-label">${editing ? 'Edit your comment' : 'Add a comment'}<textarea class="field-input field-textarea comment-textarea" name="commentContent" rows="3" maxlength="1000" placeholder="${editing ? 'Edit your comment…' : 'Add to the conversation…'}" aria-invalid="${Boolean(error)}" ${disabled}>${escapeHTML(value)}</textarea></label>
+    ${error ? `<p class="inline-error" role="alert">${escapeHTML(error)}</p>` : ''}
+    <div class="comment-form-actions"><button class="primary-button" type="submit" ${disabled}>${isPending ? `<span class="registration-loading"><span class="loading-dot"></span>${pending.action === 'edit' ? 'Saving…' : 'Posting…'}</span>` : `${editing ? 'Save comment' : 'Post comment'} ${icon('arrow', 13)}`}</button>${editing ? `<button class="quiet-button" type="button" data-action="cancel-comment-edit" ${disabled}>Cancel</button>` : ''}</div>
+  </form>`;
+}
+
+function renderCommentItem(comment) {
+  const account = activeAccount();
+  const isOwner = account?.role === 'Fan' && account.id === comment.authorId;
+  const isEditing = isOwner && state.commentEditor?.commentId === comment.id;
+  const isDeleting = isOwner && state.commentDeleteConfirmId === comment.id;
+  const pending = state.commentPending?.commentId === comment.id;
+  const disabled = state.commentPending ? 'disabled' : '';
+  const profileRoute = `/profile/${encodeURIComponent(comment.authorId)}`;
+  return `<li class="comment-item">
+    <div class="comment-head"><a class="comment-author" href="${hrefFor(profileRoute)}" data-route="${profileRoute}">@${escapeHTML(comment.authorUsername)}</a><span class="comment-date">${escapeHTML(formatPostDate(comment.createdAt))}${comment.updatedAt ? ' · edited' : ''}</span></div>
+    ${isEditing ? renderCommentForm(state.posts.find((post) => post.id === comment.postId), comment) : `<p class="comment-content">${escapeHTML(comment.content)}</p>`}
+    ${isOwner && !isEditing ? `<div class="comment-actions">${pending ? `<span class="post-saving" role="status">Updating comment…</span>` : isDeleting ? `<div class="comment-delete-confirm" role="alert"><span>Delete this comment?</span><button class="text-button text-danger" type="button" data-action="confirm-delete-comment" data-comment-id="${escapeHTML(comment.id)}" ${disabled}>Delete</button><button class="text-button" type="button" data-action="cancel-delete-comment" ${disabled}>Cancel</button></div>` : `<button class="text-button" type="button" data-action="edit-comment" data-comment-id="${escapeHTML(comment.id)}" ${disabled}>${icon('edit', 12)} Edit</button><button class="text-button text-danger" type="button" data-action="request-delete-comment" data-comment-id="${escapeHTML(comment.id)}" ${disabled}>${icon('trash', 12)} Delete</button>`}</div>` : ''}
+  </li>`;
+}
+
+function renderCommentThread(post) {
+  const account = activeAccount();
+  const expanded = state.expandedCommentPostIds.includes(post.id);
+  const comments = state.comments.filter((comment) => comment.postId === post.id)
+    .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
+  const status = state.commentStatus?.postId === post.id && state.commentStatus?.userId === account?.id
+    ? `<p class="${state.commentStatus.kind === 'error' ? 'error-banner' : 'success-banner'} comment-status" role="${state.commentStatus.kind === 'error' ? 'alert' : 'status'}">${state.commentStatus.kind === 'success' ? icon('check', 14) : ''}${escapeHTML(state.commentStatus.message)}</p>`
+    : '';
+  const pending = state.commentPending?.postId === post.id && state.commentPending?.userId === account?.id
+    ? `<p class="post-saving" role="status">${state.commentPending.action === 'delete' ? 'Deleting comment…' : state.commentPending.action === 'edit' ? 'Saving comment…' : 'Posting comment…'}</p>`
+    : '';
+  return `<section class="post-comments">
+    <button class="text-button comments-toggle" type="button" data-action="toggle-comments" data-post-id="${escapeHTML(post.id)}" aria-expanded="${expanded}">${expanded ? 'Hide comments' : 'Comments'}</button>
+    ${expanded ? `<div class="comment-thread">${status}${pending}
+      ${comments.length ? `<ol class="comment-list">${comments.map(renderCommentItem).join('')}</ol>` : `<div class="comment-empty">${renderEmpty('No comments yet.', account?.role === 'Fan' ? 'Be the first to add a note.' : 'There is nothing to read here yet.')}</div>`}
+      ${account?.role === 'Fan' ? renderCommentForm(post) : `<p class="comment-read-only">Fan accounts can add comments.</p>`}
+    </div>` : ''}
+  </section>`;
+}
+
 function renderPostCard(post) {
   const board = state.boards.find((entry) => entry.id === post.boardId);
   if (!board) return '';
@@ -431,6 +531,13 @@ function renderPostCard(post) {
   const profileRoute = `/profile/${encodeURIComponent(post.authorId)}`;
   const editDraft = ownsPost ? state.postDrafts[postDraftKey(account.id, board.id, post.id)] : null;
   const deleteConfirmation = ownsPost && state.deleteConfirmPostId === post.id;
+  const ownRepost = account?.role === 'Fan' ? state.reposts.find((entry) => entry.userId === account.id && entry.postId === post.id) : null;
+  const repostConfirmation = state.repostConfirm?.postId === post.id && state.repostConfirm?.userId === account?.id;
+  const repostPending = state.repostPending?.postId === post.id && state.repostPending?.userId === account?.id;
+  const postMutationPending = state.commentPending?.postId === post.id || state.repostPending?.postId === post.id;
+  const repostStatus = state.repostStatus?.postId === post.id && state.repostStatus?.userId === account?.id
+    ? `<p class="${state.repostStatus.kind === 'error' ? 'error-banner' : 'success-banner'} repost-status" role="${state.repostStatus.kind === 'error' ? 'alert' : 'status'}">${state.repostStatus.kind === 'success' ? icon('check', 14) : ''}${escapeHTML(state.repostStatus.message)}</p>`
+    : '';
   const shelfStatus = state.shelfStatus?.ownerId === account?.id && state.shelfStatus?.postId === post.id
     ? `<p class="shelf-post-status" role="status">${icon('check', 13)}${escapeHTML(state.shelfStatus.message)}</p>`
     : '';
@@ -445,13 +552,26 @@ function renderPostCard(post) {
     ${ownsPost && editDraft ? `<div class="post-draft-inline"><span>Unpublished edits saved in this tab.</span><div><button class="text-button" type="button" data-action="resume-post-draft" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">Resume editing</button><button class="text-button text-danger" type="button" data-action="discard-saved-post-draft" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">Discard draft</button></div></div>` : ''}
     <div class="post-actions">
       <button class="text-button shelf-save-button" type="button" data-action="open-shelf-picker" data-post-id="${escapeHTML(post.id)}" ${state.shelfLoading ? 'disabled' : ''}>${icon('bookmark', 13)} Add to Shelf</button>
+      ${account?.role === 'Fan' ? `<button class="text-button repost-button" type="button" data-action="toggle-repost" data-post-id="${escapeHTML(post.id)}" ${state.repostPending ? 'disabled' : ''}>${icon('repost', 13)} ${ownRepost ? 'Undo repost' : 'Repost'}</button>` : ''}
       ${ownsPost ? (state.postPublishing
         ? `<span class="post-saving" role="status">${state.pendingPost?.postId === post.id ? 'Saving changes…' : 'Please wait for the post to finish publishing…'}</span>`
         : deleteConfirmation
-        ? `<div class="post-delete-confirm" role="alert"><span>Delete this post?</span><button class="text-button text-danger" type="button" data-action="confirm-delete-post" data-post-id="${escapeHTML(post.id)}">Delete</button><button class="text-button" type="button" data-action="cancel-delete-post">Cancel</button></div>`
-        : `<button class="text-button" type="button" data-action="edit-post" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}">${icon('edit', 13)} Edit</button><button class="text-button text-danger" type="button" data-action="request-delete-post" data-post-id="${escapeHTML(post.id)}">${icon('trash', 13)} Delete</button>`) : ''}
+        ? `<div class="post-delete-confirm" role="alert"><span>Delete this post?</span><button class="text-button text-danger" type="button" data-action="confirm-delete-post" data-post-id="${escapeHTML(post.id)}" ${postMutationPending ? 'disabled' : ''}>Delete</button><button class="text-button" type="button" data-action="cancel-delete-post" ${postMutationPending ? 'disabled' : ''}>Cancel</button></div>`
+        : `<button class="text-button" type="button" data-action="edit-post" data-board-id="${escapeHTML(board.id)}" data-post-id="${escapeHTML(post.id)}" ${postMutationPending ? 'disabled' : ''}>${icon('edit', 13)} Edit</button><button class="text-button text-danger" type="button" data-action="request-delete-post" data-post-id="${escapeHTML(post.id)}" ${postMutationPending ? 'disabled' : ''}>${icon('trash', 13)} Delete</button>`) : ''}
     </div>
+    ${repostConfirmation ? `<div class="repost-confirm" role="alert"><span>${state.repostConfirm.action === 'undo' ? 'Undo your repost?' : 'Repost this to your profile?'}</span><button class="text-button text-danger" type="button" data-action="confirm-repost" data-post-id="${escapeHTML(post.id)}">Confirm</button><button class="text-button" type="button" data-action="cancel-repost">Cancel</button></div>` : ''}
+    ${repostPending ? `<p class="post-saving repost-pending" role="status">${state.repostPending.action === 'undo' ? 'Undoing your repost…' : 'Reposting…'}</p>` : ''}
+    ${repostStatus}
+    ${renderCommentThread(post)}
   </article>`;
+}
+
+function renderFeedItem(item) {
+  if (item.type !== 'repost') return renderPostCard(item.post);
+  const reposter = state.accounts.find((account) => account.id === item.repost.userId);
+  if (!reposter) return '';
+  const profileRoute = `/profile/${encodeURIComponent(reposter.id)}`;
+  return `<div class="repost-feed-item"><p class="repost-credit">${icon('repost', 13)} <a href="${hrefFor(profileRoute)}" data-route="${profileRoute}">@${escapeHTML(reposter.username)}</a> reposted</p>${renderPostCard(item.post)}</div>`;
 }
 
 function renderPostForm(board, editor, draft) {
@@ -951,8 +1071,15 @@ function renderProfile() {
       <div class="switcher-footer"><button class="outline-button" type="button" data-action="add-account">${icon('plus', 15)} Register another account</button></div>
       <p class="form-note">Accounts are held in page memory only. They disappear when you refresh.</p>
     </section>
-    <hr class="section-rule"><section class="profile-empty">${renderEmpty('Your profile is empty.', 'There is no content here yet.')}</section>
+    <hr class="section-rule">${renderAccountActivity(account.id, 'Your activity', 'Your profile is empty.', 'Your posts and reposts will appear here.')}
   </section>`;
+}
+
+function renderAccountActivity(accountId, heading, emptyTitle, emptyCopy) {
+  const items = accountActivityItems(accountId);
+  return `<section class="profile-activity"><h2 class="section-heading">${escapeHTML(heading)}</h2>${items.length
+    ? `<div class="post-list">${items.map(renderFeedItem).join('')}</div>`
+    : renderEmpty(emptyTitle, emptyCopy)}</section>`;
 }
 
 function renderPublicProfile(accountId) {
@@ -960,9 +1087,7 @@ function renderPublicProfile(accountId) {
   if (!profile) {
     return `<section><p class="eyebrow">Member profile</p><h1 class="page-title">Profile not found.</h1><p class="page-subtitle">This profile isn’t available in this session.</p>${renderEmpty('No profile found.')}</section>`;
   }
-  const posts = profile.role === 'Fan'
-    ? chronologicalPosts(state.posts.filter((post) => post.authorId === profile.id && isVisibleFanPost(post)))
-    : [];
+  const activity = accountActivityItems(profile.id);
   const artistBoard = profile.role === 'Artist' ? boardForOwner(profile.id) : null;
   const boardRoute = artistBoard ? `/board/${encodeURIComponent(artistBoard.id)}` : '';
   return `<section><p class="eyebrow">A member of Stillroom</p><h1 class="page-title">${escapeHTML(profile.role)} profile</h1>
@@ -973,7 +1098,7 @@ function renderPublicProfile(accountId) {
     </div>
     ${artistBoard ? `<section class="profile-board-section"><h2 class="section-heading">Artist board</h2>${renderBoardCard(artistBoard)}</section>` : ''}
     ${renderPublicShelves(profile.id)}
-    ${profile.role === 'Fan' ? `<h2 class="section-heading">Posts</h2>${posts.length ? `<div class="post-list">${posts.map((post) => renderPostCard(post)).join('')}</div>` : renderEmpty('No posts yet.', 'When this Fan publishes, their posts will appear here.')}` : ''}
+    <h2 class="section-heading">Activity</h2>${activity.length ? `<div class="post-list">${activity.map(renderFeedItem).join('')}</div>` : renderEmpty('No posts or reposts yet.', 'Posts and reposts will appear here.')}
   </section>`;
 }
 
@@ -1214,6 +1339,226 @@ function toggleArtistFollow(boardId) {
   render();
 }
 
+function toggleComments(postId) {
+  const post = state.posts.find((entry) => entry.id === postId);
+  if (!post) return;
+  state.expandedCommentPostIds = state.expandedCommentPostIds.includes(postId)
+    ? state.expandedCommentPostIds.filter((entry) => entry !== postId)
+    : [...state.expandedCommentPostIds, postId];
+  render();
+}
+
+function submitComment(form) {
+  const account = activeAccount();
+  const post = state.posts.find((entry) => entry.id === form.dataset.postId && isVisibleFanPost(entry));
+  const commentId = form.dataset.commentId || null;
+  if (account?.role !== 'Fan' || !post || state.commentPending) return;
+
+  const existing = commentId
+    ? state.comments.find((entry) => entry.id === commentId && entry.postId === post.id && entry.authorId === account.id)
+    : null;
+  const key = commentId || commentDraftKey(account.id, post.id);
+  const content = String(new FormData(form).get('commentContent') || '').trim();
+  const error = !content
+    ? 'Write a comment before posting.'
+    : content.length > 1000
+      ? 'Comments must be 1,000 characters or fewer.'
+      : commentId && !existing
+        ? 'You can only edit your own comments.'
+        : '';
+
+  if (commentId && state.commentEditor?.commentId === commentId) state.commentEditor.content = content;
+  else if (!commentId) state.commentDrafts[commentDraftKey(account.id, post.id)] = content;
+  state.commentErrors[key] = error;
+  if (error) {
+    render();
+    app.querySelector('[name="commentContent"]')?.focus();
+    return;
+  }
+
+  state.commentErrors[key] = '';
+  state.commentPending = {
+    action: commentId ? 'edit' : 'create',
+    userId: account.id,
+    postId: post.id,
+    commentId,
+    content,
+    draftKey: commentDraftKey(account.id, post.id),
+  };
+  state.commentStatus = null;
+  render();
+  state.commentTimer = window.setTimeout(() => {
+    const pending = state.commentPending;
+    if (!pending) return;
+    const targetPost = state.posts.find((entry) => entry.id === pending.postId);
+    const author = state.accounts.find((entry) => entry.id === pending.userId);
+    let message = '';
+    let kind = 'success';
+    if (!targetPost || author?.role !== 'Fan') {
+      kind = 'error';
+      message = 'This comment could not be saved. Please try again.';
+    } else if (pending.action === 'create') {
+      state.comments.push({
+        id: `comment-${state.nextCommentId++}`,
+        postId: pending.postId,
+        authorId: pending.userId,
+        authorUsername: author.username,
+        content: pending.content,
+        createdAt: Date.now(),
+      });
+      delete state.commentDrafts[pending.draftKey];
+      delete state.commentErrors[pending.draftKey];
+      message = 'Comment posted.';
+    } else {
+      const targetComment = state.comments.find((entry) => entry.id === pending.commentId && entry.postId === pending.postId && entry.authorId === pending.userId);
+      if (!targetComment) {
+        kind = 'error';
+        message = 'This comment is no longer available to edit.';
+      } else {
+        targetComment.content = pending.content;
+        targetComment.updatedAt = Date.now();
+        delete state.commentErrors[pending.commentId];
+        message = 'Comment updated.';
+      }
+    }
+    state.commentPending = null;
+    state.commentTimer = null;
+    state.commentEditor = null;
+    state.commentStatus = { userId: pending.userId, postId: pending.postId, kind, message };
+    if (!state.expandedCommentPostIds.includes(pending.postId)) state.expandedCommentPostIds.push(pending.postId);
+    render();
+  }, 180);
+}
+
+function beginCommentEdit(commentId) {
+  const account = activeAccount();
+  const comment = state.comments.find((entry) => entry.id === commentId);
+  if (account?.role !== 'Fan' || comment?.authorId !== account.id || state.commentPending) return;
+  state.commentEditor = { commentId, postId: comment.postId, userId: account.id, content: comment.content };
+  state.expandedCommentPostIds = [...new Set([...state.expandedCommentPostIds, comment.postId])];
+  delete state.commentErrors[commentId];
+  render();
+}
+
+function cancelCommentEdit() {
+  if (state.commentPending) return;
+  if (state.commentEditor) delete state.commentErrors[state.commentEditor.commentId];
+  state.commentEditor = null;
+  render();
+}
+
+function requestDeleteComment(commentId) {
+  const account = activeAccount();
+  const comment = state.comments.find((entry) => entry.id === commentId);
+  if (account?.role !== 'Fan' || comment?.authorId !== account.id || state.commentPending) return;
+  state.commentDeleteConfirmId = comment.id;
+  state.expandedCommentPostIds = [...new Set([...state.expandedCommentPostIds, comment.postId])];
+  render();
+}
+
+function confirmDeleteComment(commentId) {
+  const account = activeAccount();
+  const comment = state.comments.find((entry) => entry.id === commentId);
+  if (account?.role !== 'Fan' || comment?.authorId !== account.id || state.commentPending || state.commentDeleteConfirmId !== commentId) return;
+  state.commentPending = { action: 'delete', userId: account.id, postId: comment.postId, commentId };
+  state.commentDeleteConfirmId = null;
+  state.commentStatus = null;
+  render();
+  state.commentTimer = window.setTimeout(() => {
+    const pending = state.commentPending;
+    if (!pending) return;
+    const exists = state.comments.some((entry) => entry.id === pending.commentId && entry.authorId === pending.userId);
+    let kind = 'success';
+    let message = 'Comment deleted.';
+    if (exists) {
+      state.comments = state.comments.filter((entry) => entry.id !== pending.commentId);
+      delete state.commentErrors[pending.commentId];
+      if (state.commentEditor?.commentId === pending.commentId) state.commentEditor = null;
+    } else {
+      kind = 'error';
+      message = 'This comment could not be deleted. Please try again.';
+    }
+    state.commentPending = null;
+    state.commentTimer = null;
+    state.commentStatus = { userId: pending.userId, postId: pending.postId, kind, message };
+    render();
+  }, 180);
+}
+
+function toggleRepost(postId) {
+  const account = activeAccount();
+  const post = state.posts.find((entry) => entry.id === postId && isVisibleFanPost(entry));
+  if (account?.role !== 'Fan' || !post || state.repostPending) return;
+  const existing = state.reposts.find((entry) => entry.userId === account.id && entry.postId === post.id);
+  state.repostConfirm = { action: existing ? 'undo' : 'create', userId: account.id, postId: post.id };
+  state.repostStatus = null;
+  render();
+}
+
+function cancelRepost() {
+  if (state.repostPending) return;
+  state.repostConfirm = null;
+  render();
+}
+
+function confirmRepost(postId) {
+  const account = activeAccount();
+  const confirmation = state.repostConfirm;
+  const post = state.posts.find((entry) => entry.id === postId && isVisibleFanPost(entry));
+  if (account?.role !== 'Fan' || !post || state.repostPending || confirmation?.postId !== postId || confirmation?.userId !== account.id) return;
+  const existing = state.reposts.find((entry) => entry.userId === account.id && entry.postId === postId);
+  if (confirmation.action === 'create' && existing) {
+    state.repostConfirm = null;
+    state.repostStatus = { userId: account.id, postId, kind: 'error', message: 'You have already reposted this post.' };
+    render();
+    return;
+  }
+  if (confirmation.action === 'undo' && !existing) {
+    state.repostConfirm = null;
+    state.repostStatus = { userId: account.id, postId, kind: 'error', message: 'Your repost is no longer available.' };
+    render();
+    return;
+  }
+  state.repostPending = { action: confirmation.action, userId: account.id, postId, repostId: existing?.id || null };
+  state.repostConfirm = null;
+  state.repostStatus = null;
+  render();
+  state.repostTimer = window.setTimeout(() => {
+    const pending = state.repostPending;
+    if (!pending) return;
+    const targetPost = state.posts.find((entry) => entry.id === pending.postId && isVisibleFanPost(entry));
+    const reposter = state.accounts.find((entry) => entry.id === pending.userId && entry.role === 'Fan');
+    let kind = 'success';
+    let message = '';
+    if (!targetPost || !reposter) {
+      kind = 'error';
+      message = 'This repost could not be completed. Please try again.';
+    } else if (pending.action === 'create') {
+      const duplicate = state.reposts.some((entry) => entry.userId === pending.userId && entry.postId === pending.postId);
+      if (duplicate) {
+        kind = 'error';
+        message = 'You have already reposted this post.';
+      } else {
+        state.reposts.push({ id: `repost-${state.nextRepostId++}`, userId: pending.userId, postId: pending.postId, repostedAt: Date.now() });
+        message = 'Repost added to your profile.';
+      }
+    } else {
+      const ownedRepost = state.reposts.find((entry) => entry.id === pending.repostId && entry.userId === pending.userId && entry.postId === pending.postId);
+      if (!ownedRepost) {
+        kind = 'error';
+        message = 'Your repost is no longer available.';
+      } else {
+        state.reposts = state.reposts.filter((entry) => entry.id !== ownedRepost.id);
+        message = 'Your repost was removed.';
+      }
+    }
+    state.repostPending = null;
+    state.repostTimer = null;
+    state.repostStatus = { userId: pending.userId, postId: pending.postId, kind, message };
+    render();
+  }, 180);
+}
+
 function discardPostDraft(authorId, boardId, postId = null) {
   const key = postDraftKey(authorId, boardId, postId);
   const draft = state.postDrafts[key];
@@ -1226,7 +1571,9 @@ function discardPostDraft(authorId, boardId, postId = null) {
 function deletePost(postId) {
   const account = activeAccount();
   const post = state.posts.find((entry) => entry.id === postId);
-  if (!account || account.role !== 'Fan' || !post || post.authorId !== account.id || (state.postPublishing && state.pendingPost?.postId === post.id)) return;
+  if (!account || account.role !== 'Fan' || !post || post.authorId !== account.id
+    || (state.postPublishing && state.pendingPost?.postId === post.id)
+    || state.commentPending?.postId === post.id || state.repostPending?.postId === post.id) return;
 
   for (const [key, draft] of Object.entries(state.postDrafts)) {
     if (draft.postId === post.id) {
@@ -1236,7 +1583,23 @@ function deletePost(postId) {
     }
   }
   if (post.media?.url?.startsWith('blob:')) URL.revokeObjectURL(post.media.url);
+  const deletedCommentIds = new Set(state.comments.filter((entry) => entry.postId === post.id).map((entry) => entry.id));
   state.posts = state.posts.filter((entry) => entry.id !== post.id);
+  state.reposts = state.reposts.filter((entry) => entry.postId !== post.id);
+  state.comments = state.comments.filter((entry) => entry.postId !== post.id);
+  for (const commentId of deletedCommentIds) delete state.commentErrors[commentId];
+  for (const key of Object.keys(state.commentDrafts)) {
+    if (key.endsWith(`::${post.id}`)) {
+      delete state.commentDrafts[key];
+      delete state.commentErrors[key];
+    }
+  }
+  state.expandedCommentPostIds = state.expandedCommentPostIds.filter((entry) => entry !== post.id);
+  if (state.commentEditor?.postId === post.id) state.commentEditor = null;
+  if (deletedCommentIds.has(state.commentDeleteConfirmId)) state.commentDeleteConfirmId = null;
+  if (state.commentStatus?.postId === post.id) state.commentStatus = null;
+  if (state.repostConfirm?.postId === post.id) state.repostConfirm = null;
+  if (state.repostStatus?.postId === post.id) state.repostStatus = null;
   state.shelves = state.shelves.map((shelf) => shelf.postIds.includes(post.id)
     ? { ...shelf, postIds: shelf.postIds.filter((savedId) => savedId !== post.id) }
     : shelf);
@@ -1403,6 +1766,21 @@ app?.addEventListener('input', (event) => {
       }
     }
   }
+  if (target instanceof HTMLTextAreaElement && target.name === 'commentContent') {
+    const account = activeAccount();
+    const form = target.closest('form[data-form="comment"]');
+    if (account?.role === 'Fan' && form) {
+      const commentId = form.dataset.commentId || null;
+      const key = commentId || commentDraftKey(account.id, form.dataset.postId);
+      if (commentId && state.commentEditor?.commentId === commentId) state.commentEditor.content = target.value;
+      else if (!commentId) state.commentDrafts[key] = target.value;
+      if (state.commentErrors[key]) {
+        delete state.commentErrors[key];
+        target.removeAttribute('aria-invalid');
+        form.querySelector('.inline-error')?.remove();
+      }
+    }
+  }
   if (target instanceof HTMLInputElement && target.matches('[data-explore-search]')) {
     state.exploreQuery = target.value;
     const results = app.querySelector('#explore-results');
@@ -1470,6 +1848,7 @@ app?.addEventListener('submit', (event) => {
   else if (form.dataset.form === 'post' && !state.postPublishing) submitPost(form);
   else if (form.dataset.form === 'shelf' && !state.shelfLoading) submitShelfForm(form);
   else if (form.dataset.form === 'shelf-picker' && !state.shelfLoading) submitShelfPicker(form);
+  else if (form.dataset.form === 'comment' && !state.commentPending) submitComment(form);
 });
 
 app?.addEventListener('click', (event) => {
@@ -1502,6 +1881,11 @@ app?.addEventListener('click', (event) => {
     state.shelfErrors = {};
     state.shelfStatus = null;
     state.shelfDeleteConfirmId = null;
+    state.repostConfirm = null;
+    state.repostStatus = null;
+    state.commentEditor = null;
+    state.commentDeleteConfirmId = null;
+    state.commentStatus = null;
     state.activeAccountId = target.dataset.accountId;
     state.successAccountId = null;
     state.editingProfile = false;
@@ -1517,6 +1901,11 @@ app?.addEventListener('click', (event) => {
     state.shelfErrors = {};
     state.shelfStatus = null;
     state.shelfDeleteConfirmId = null;
+    state.repostConfirm = null;
+    state.repostStatus = null;
+    state.commentEditor = null;
+    state.commentDeleteConfirmId = null;
+    state.commentStatus = null;
     state.activeAccountId = null;
     state.successAccountId = null;
     state.editingProfile = false;
@@ -1524,6 +1913,27 @@ app?.addEventListener('click', (event) => {
   } else if (action === 'home-tab') {
     state.homeTab = target.dataset.tab;
     render();
+  } else if (action === 'toggle-comments') {
+    toggleComments(target.dataset.postId);
+  } else if (action === 'edit-comment') {
+    beginCommentEdit(target.dataset.commentId);
+  } else if (action === 'cancel-comment-edit') {
+    cancelCommentEdit();
+  } else if (action === 'request-delete-comment') {
+    requestDeleteComment(target.dataset.commentId);
+  } else if (action === 'confirm-delete-comment') {
+    confirmDeleteComment(target.dataset.commentId);
+  } else if (action === 'cancel-delete-comment') {
+    if (!state.commentPending) {
+      state.commentDeleteConfirmId = null;
+      render();
+    }
+  } else if (action === 'toggle-repost') {
+    toggleRepost(target.dataset.postId);
+  } else if (action === 'confirm-repost') {
+    confirmRepost(target.dataset.postId);
+  } else if (action === 'cancel-repost') {
+    cancelRepost();
   } else if (action === 'open-search') {
     state.searchOpen = true;
     render();
@@ -1657,7 +2067,8 @@ app?.addEventListener('click', (event) => {
   } else if (action === 'request-delete-post') {
     const account = activeAccount();
     const post = state.posts.find((entry) => entry.id === target.dataset.postId);
-    if (!state.postPublishing && account?.role === 'Fan' && post?.authorId === account.id) {
+    if (!state.postPublishing && state.commentPending?.postId !== post?.id && state.repostPending?.postId !== post?.id
+      && account?.role === 'Fan' && post?.authorId === account.id) {
       state.deleteConfirmPostId = post.id;
       render();
     }

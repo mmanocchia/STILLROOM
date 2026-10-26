@@ -356,6 +356,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .empty-action { display: flex; justify-content: center; margin-top: -12px; }
 .empty-cta { margin-top: 18px; }
 .success-banner { display: flex; max-width: 720px; align-items: center; gap: 9px; margin: 20px 0 0; padding: 12px 14px; border: 1px solid #c7d2bd; background: #eef1e8; color: #4e6546; font-size: 11px; }
+.error-banner { display: flex; max-width: 720px; align-items: center; gap: 9px; margin: 15px 0; padding: 10px 12px; border: 1px solid #d9b9ae; background: #f5eae5; color: #8c493e; font-size: 10px; }
 .board-form-card { max-width: 720px; margin-top: 29px; padding: 24px 25px; border: 1px solid var(--line); background: rgba(255,255,255,.12); }
 .field-textarea { min-height: 112px; resize: vertical; line-height: 1.65; }
 .optional-label { color: var(--faint); font-size: 10px; }
@@ -474,6 +475,38 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .post-media img, .post-media video { display: block; width: 100%; max-height: 560px; object-fit: contain; }
 .post-media video { background: #171512; }
 .post-actions { display: flex; justify-content: flex-end; gap: 15px; margin-top: 14px; }
+.post-actions { flex-wrap: wrap; align-items: center; }
+.repost-feed-item { min-width: 0; }
+.repost-credit { display: flex; align-items: center; gap: 7px; margin: 18px 0 0; color: var(--faint); font: 9px 'DM Mono', monospace; letter-spacing: .06em; }
+.repost-credit .icon { color: var(--rust); }
+.repost-credit a { color: var(--rust); text-decoration: none; }
+.repost-credit a:hover { color: var(--rust-dark); }
+.repost-confirm, .comment-delete-confirm { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 11px; color: var(--muted); font-size: 10px; }
+.repost-pending { text-align: right; }
+.repost-status, .comment-status { max-width: 100%; margin-top: 10px; }
+.repost-button:disabled, .comment-form-actions button:disabled { cursor: wait; opacity: .55; }
+.post-comments { margin-top: 12px; border-top: 1px solid var(--line); }
+.comments-toggle { min-height: 34px; padding-left: 0; color: var(--rust); }
+.comment-thread { margin-top: 5px; padding: 15px; border: 1px solid var(--line); background: rgba(238,232,220,.28); }
+.comment-list { margin: 0; padding: 0; list-style: none; }
+.comment-item { padding: 13px 0; border-bottom: 1px solid var(--line); }
+.comment-item:first-child { padding-top: 0; }
+.comment-item:last-child { border-bottom: 0; }
+.comment-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.comment-author { color: var(--rust); font-size: 10px; text-decoration: none; }
+.comment-author:hover { color: var(--rust-dark); }
+.comment-date { color: var(--faint); font-size: 9px; }
+.comment-content { margin: 7px 0 0; color: var(--ink); font-size: 11px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 4px; }
+.comment-actions .text-button { min-height: 29px; padding: 0 7px; font-size: 10px; }
+.comment-form { margin-top: 14px; }
+.comment-field-label { display: grid; gap: 7px; color: var(--muted); font-size: 10px; }
+.comment-textarea { min-height: 74px; padding: 10px 12px; font-size: 11px; }
+.comment-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 9px; }
+.comment-form-actions .primary-button, .comment-form-actions .quiet-button { min-height: 34px; font-size: 10px; }
+.comment-empty .empty-state { min-height: 116px; margin-top: 8px; }
+.comment-empty .empty-state-inner { padding: 16px; }
+.comment-read-only { margin: 13px 0 0; color: var(--faint); font-size: 10px; }
 .text-danger { color: #9a493e; }
 .post-delete-confirm { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 15px; color: var(--muted); font-size: 10px; }
 .post-draft-inline { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--line-dark); color: var(--muted); font-size: 10px; }
@@ -484,6 +517,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .owned-board-card .board-card { min-height: 112px; }
 .owned-board-empty { display: block; margin: 12px 0 0; color: var(--faint); font-size: 10px; }
 .profile-card { max-width: 700px; margin-top: 29px; padding: 25px 0 27px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.profile-activity { max-width: 800px; margin-top: 30px; }
+.profile-activity > .section-heading { margin-top: 0; }
 .profile-card-head { display: flex; align-items: center; gap: 16px; }
 .profile-avatar { display: grid; width: 57px; height: 57px; place-items: center; border: 1px solid var(--line-dark); border-radius: 50%; color: var(--rust); font: 500 20px 'Playfair Display', Georgia, serif; }
 .profile-name { margin: 0; font: 500 25px 'Playfair Display', Georgia, serif; }
@@ -540,6 +575,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .post-composer { padding: 18px 15px; }
   .post-card-heading { align-items: flex-start; flex-direction: column; gap: 9px; }
   .post-board-context { margin-left: 45px; text-align: left; }
+  .post-actions { justify-content: flex-start; gap: 4px; }
+  .repost-confirm, .comment-delete-confirm { justify-content: flex-start; flex-wrap: wrap; }
+  .comment-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .comment-thread { padding: 12px; }
   .saved-post-draft { align-items: flex-start; flex-wrap: wrap; }
   .saved-post-draft > div { flex-basis: 100%; }
   .followed-board-row { align-items: stretch; flex-direction: column; gap: 8px; }
