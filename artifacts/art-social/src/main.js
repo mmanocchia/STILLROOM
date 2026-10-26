@@ -32,8 +32,17 @@ const state = {
   homeTab: 'for-you',
   searchOpen: false,
   editingProfile: false,
-  profileDraft: '',
+  profileDraft: null,
   profileError: '',
+  profileFieldErrors: {},
+  profileImageLoading: false,
+  profileImageError: '',
+  profileImageToken: 0,
+  profileLoading: false,
+  profilePending: null,
+  profileTimer: null,
+  profileStatus: null,
+  profileActivityTabs: {},
   exploreQuery: '',
   exploreDiscipline: 'all',
   exploreLoading: false,
@@ -321,9 +330,18 @@ function header({ right = '' } = {}) {
   return `<header class="landing-header">${brand()}${right}</header>`;
 }
 
-function renderAccountChoice(account, current = false) {
-  const details = `<span><span class="account-choice-name">${escapeHTML(account.name)}</span><span class="account-choice-meta">@${escapeHTML(account.username)}</span></span>
-    <span class="account-choice-role">${current ? 'Current · ' : ''}${escapeHTML(account.role)}</span>`;
+function renderAccountChoice(account, current = false, profileLink = false) {
+  const profileRoute = `/profile/${encodeURIComponent(account.id)}`;
+  const usernameLink = `<a class="account-choice-profile-link" href="${hrefFor(profileRoute)}" data-route="${profileRoute}">@${escapeHTML(account.username)}</a>`;
+  const details = profileLink
+    ? `<span class="account-choice-name">${escapeHTML(account.name)}</span><span class="account-choice-role">${current ? 'Current · ' : ''}${escapeHTML(account.role)}</span>`
+    : `<span><span class="account-choice-name">${escapeHTML(account.name)}</span><span class="account-choice-meta">@${escapeHTML(account.username)}</span></span><span class="account-choice-role">${current ? 'Current · ' : ''}${escapeHTML(account.role)}</span>`;
+  if (profileLink) {
+    const choice = current
+      ? `<div class="account-choice switcher-current" aria-current="true">${details}</div>`
+      : `<button class="account-choice" type="button" data-action="switch-account" data-account-id="${escapeHTML(account.id)}">${details}${icon('arrow', 14)}</button>`;
+    return `<div class="account-choice-row">${choice}${usernameLink}</div>`;
+  }
   return current
     ? `<div class="account-choice switcher-current" aria-current="true">${details}</div>`
     : `<button class="account-choice" type="button" data-action="switch-account" data-account-id="${escapeHTML(account.id)}">${details}${icon('arrow', 14)}</button>`;
@@ -443,6 +461,7 @@ function renderShell(content, pageTitle) {
   const nav = navItems.map((item) => navLink(item, state.route)).join('');
   const currentName = escapeHTML(account?.name || '');
   const currentUser = escapeHTML(account?.username || '');
+  const currentProfileRoute = account ? `/profile/${encodeURIComponent(account.id)}` : '/profile';
   const searchControl = state.searchOpen
     ? `<label class="search-wrap">${icon('search', 15)}<input aria-label="Search artist boards" placeholder="Search" autocomplete="off"><button class="icon-button" type="button" data-action="close-search" aria-label="Close search">${icon('close', 15)}</button></label>`
     : `<button class="icon-button" type="button" data-action="open-search" aria-label="Open search">${icon('search', 17)}<span class="search-label">Search</span></button>`;
@@ -452,7 +471,7 @@ function renderShell(content, pageTitle) {
       <nav class="sidebar-nav" aria-label="Main navigation">${nav}</nav>
       <div class="sidebar-bottom">
         <div class="sidebar-note"><p class="eyebrow">A note to keep</p><h2 class="sidebar-note-title">Look a little longer.</h2><p class="sidebar-note-copy">There is no score to keep here. Just work worth returning to.</p></div>
-        <div class="sidebar-user"><span class="avatar-mark">${initials}</span><span><span class="sidebar-user-name">${currentName}</span><span class="sidebar-user-handle">@${currentUser} · ${escapeHTML(account?.role || '')}</span></span></div>
+        <div class="sidebar-user"><span class="avatar-mark">${initials}</span><span><span class="sidebar-user-name">${currentName}</span><a class="sidebar-user-handle" href="${hrefFor(currentProfileRoute)}" data-route="${currentProfileRoute}">@${currentUser} · ${escapeHTML(account?.role || '')}</a></span></div>
       </div>
     </aside>
     <div class="app-main">
@@ -1203,38 +1222,117 @@ function confirmDeleteShelf(shelfId) {
   }, 180);
 }
 
-function renderProfile() {
-  const account = activeAccount();
-  if (!account) return '';
-  const name = escapeHTML(account.name);
-  const username = escapeHTML(account.username);
-  const accounts = state.accounts;
-  const editing = state.editingProfile;
-  const profilePanel = editing
-    ? `<div class="profile-edit"><label class="field-label">Display name<input class="field-input" name="profile-name" value="${escapeHTML(state.profileDraft)}" placeholder="Your name"></label>${state.profileError ? `<p class="inline-error" role="alert">${escapeHTML(state.profileError)}</p>` : ''}<div class="switcher-footer"><button class="primary-button" type="button" data-action="save-profile">Save</button><button class="quiet-button" type="button" data-action="cancel-profile-edit">Cancel</button></div></div>`
-    : `<button class="quiet-button profile-edit" type="button" data-action="edit-profile">Edit profile</button>`;
-  const switcher = accounts.map((entry) => renderAccountChoice(entry, entry.id === account.id)).join('');
-  return `<section><p class="eyebrow">Your corner</p><h1 class="page-title">Profile</h1><p class="page-subtitle">A profile without a popularity score.</p>
-    <div class="profile-card">
-      <div class="profile-card-head"><span class="profile-avatar">${escapeHTML((account.name.trim()[0] || account.username[0] || 'S').toUpperCase())}</span><div><h2 class="profile-name">${name}</h2><p class="profile-meta">@${username}</p></div></div>
-      <span class="role-pill">${escapeHTML(account.role)}</span>${profilePanel}
-    </div>
-    ${renderPublicShelves(account.id)}
-    <section class="switcher-section" aria-labelledby="switcher-title">
-      <div class="switcher-heading"><h2 class="switcher-title" id="switcher-title">Demo accounts</h2><span class="switcher-caption">Switch accounts in this tab</span></div>
-      <div class="switcher-list">${switcher}</div>
-      <div class="switcher-footer"><button class="outline-button" type="button" data-action="add-account">${icon('plus', 15)} Register another account</button></div>
-      <p class="form-note">Accounts are held in page memory only. They disappear when you refresh.</p>
-    </section>
-    <hr class="section-rule">${renderAccountActivity(account.id, 'Your activity', 'Your profile is empty.', 'Your posts and reposts will appear here.')}
+function renderProfileAvatar(image, name, username, large = false) {
+  const className = `profile-avatar${large ? ' profile-avatar-large' : ''}`;
+  if (image) return `<img class="${className} profile-avatar-image" src="${escapeHTML(image)}" alt="${escapeHTML(name)} profile image">`;
+  return `<span class="${className}" aria-hidden="true">${escapeHTML((name.trim()[0] || username[0] || 'S').toUpperCase())}</span>`;
+}
+
+function renderProfileHandle(profile) {
+  const route = `/profile/${encodeURIComponent(profile.id)}`;
+  return `<a class="profile-meta profile-handle-link" href="${hrefFor(route)}" data-route="${route}">@${escapeHTML(profile.username)}</a>`;
+}
+
+function renderProfileStatus(profileId) {
+  return state.profileStatus?.userId === profileId
+    ? `<p class="success-banner profile-success" role="status">${icon('check', 15)}${escapeHTML(state.profileStatus.message)}</p>`
+    : '';
+}
+
+function renderFanProfileForm(profile) {
+  const draft = state.profileDraft || {
+    name: profile.name,
+    biography: profile.biography || '',
+    profileImage: profile.profileImage || '',
+  };
+  const disabled = state.profileLoading || state.profileImageLoading ? 'disabled' : '';
+  const nameError = state.profileFieldErrors.name || '';
+  const biographyError = state.profileFieldErrors.biography || '';
+  const preview = draft.profileImage
+    ? `<div class="profile-image-preview"><img src="${escapeHTML(draft.profileImage)}" alt="Profile image preview"><div><p class="preview-title">Profile image selected</p><button class="text-button text-danger" type="button" data-action="remove-profile-image" ${disabled}>Remove image</button></div></div>`
+    : '';
+  return `<form class="profile-form" data-form="profile" novalidate ${state.profileLoading || state.profileImageLoading ? 'aria-busy="true"' : ''}>
+    ${state.profileError ? `<p class="inline-error" role="alert">${escapeHTML(state.profileError)}</p>` : ''}
+    <label class="field-label">Display name<input class="field-input" name="profileName" value="${escapeHTML(draft.name)}" maxlength="80" placeholder="Your name" aria-invalid="${Boolean(nameError)}" ${nameError ? 'aria-describedby="profile-name-error"' : ''} ${disabled} required></label>
+    ${nameError ? `<p class="inline-error" id="profile-name-error" role="alert">${escapeHTML(nameError)}</p>` : ''}
+    <label class="field-label">Username<input class="field-input profile-username-readonly" value="@${escapeHTML(profile.username)}" aria-label="Username" disabled><span class="field-hint">Your username stays the same so existing post and comment links continue to work.</span></label>
+    <label class="field-label">Biography <span class="optional-label">(optional)</span><textarea class="field-input field-textarea" name="profileBiography" rows="4" maxlength="500" placeholder="A few words about you" aria-invalid="${Boolean(biographyError)}" ${biographyError ? 'aria-describedby="profile-biography-error"' : ''} ${disabled}>${escapeHTML(draft.biography)}</textarea></label>
+    ${biographyError ? `<p class="inline-error" id="profile-biography-error" role="alert">${escapeHTML(biographyError)}</p>` : ''}
+    <label class="field-label">Profile image <span class="optional-label">(optional)</span><input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" data-profile-image ${disabled}><span class="field-hint">PNG, JPG, or WebP. Maximum 4 MB.</span></label>
+    ${state.profileImageLoading ? `<p class="field-hint" role="status">Preparing profile image…</p>` : ''}
+    ${state.profileImageError ? `<p class="inline-error" role="alert">${escapeHTML(state.profileImageError)}</p>` : ''}
+    ${preview}
+    <div class="profile-form-actions"><button class="primary-button" type="submit" ${disabled}>${state.profileLoading ? `<span class="registration-loading"><span class="loading-dot"></span>Saving…</span>` : 'Save profile'}</button><button class="quiet-button" type="button" data-action="cancel-profile-edit" ${disabled}>Cancel</button></div>
+  </form>`;
+}
+
+function renderFanActivity(profile) {
+  const tab = state.profileActivityTabs[profile.id] || 'posts';
+  const activity = accountActivityItems(profile.id);
+  const items = activity.filter((item) => item.type === tab.replace(/s$/, ''));
+  const emptyTitle = tab === 'posts' ? 'No posts yet.' : 'No reposts yet.';
+  const emptyCopy = tab === 'posts' ? 'Posts you publish will appear here.' : 'Reposts you share will appear here.';
+  return `<section class="profile-activity">
+    <div class="profile-activity-heading"><h2 class="section-heading">Activity</h2><div class="profile-tabs" role="tablist" aria-label="${escapeHTML(profile.username)} profile activity">
+      <button class="profile-tab" type="button" data-action="profile-activity-tab" data-profile-id="${escapeHTML(profile.id)}" data-tab="posts" role="tab" aria-selected="${tab === 'posts'}">Posts</button>
+      <button class="profile-tab" type="button" data-action="profile-activity-tab" data-profile-id="${escapeHTML(profile.id)}" data-tab="reposts" role="tab" aria-selected="${tab === 'reposts'}">Reposts</button>
+    </div></div>
+    ${items.length ? `<div class="post-list">${items.map(renderFeedItem).join('')}</div>` : renderEmpty(emptyTitle, emptyCopy)}
   </section>`;
 }
 
-function renderAccountActivity(accountId, heading, emptyTitle, emptyCopy) {
-  const items = accountActivityItems(accountId);
-  return `<section class="profile-activity"><h2 class="section-heading">${escapeHTML(heading)}</h2>${items.length
-    ? `<div class="post-list">${items.map(renderFeedItem).join('')}</div>`
-    : renderEmpty(emptyTitle, emptyCopy)}</section>`;
+function renderFanProfileContent(profile, isOwner) {
+  const editing = isOwner && state.editingProfile;
+  return `<div class="profile-card public-profile-card">
+    <div class="profile-card-head">${renderProfileAvatar(profile.profileImage || '', profile.name, profile.username, true)}<div><h2 class="profile-name">${escapeHTML(profile.name)}</h2>${renderProfileHandle(profile)}</div></div>
+    <span class="role-pill">Fan</span>
+    ${renderProfileStatus(profile.id)}
+    ${editing ? renderFanProfileForm(profile) : `<div class="profile-bio">${profile.biography ? escapeHTML(profile.biography) : `<span class="profile-bio-empty">${isOwner ? 'Add a short biography to introduce yourself.' : 'No biography yet.'}</span>`}</div>${isOwner ? `<button class="quiet-button profile-edit" type="button" data-action="edit-profile">Edit Profile</button>` : ''}`}
+  </div>
+  ${renderPublicShelves(profile.id)}
+  ${renderFanActivity(profile)}`;
+}
+
+function renderArtistProfileContent(profile, isOwner) {
+  const board = boardForOwner(profile.id);
+  const name = board?.artistName || profile.name;
+  const image = board?.profileImage || '';
+  const boardRoute = board ? `/board/${encodeURIComponent(board.id)}` : '';
+  const posts = board
+    ? chronologicalPosts(state.posts.filter((post) => post.boardId === board.id && isVisibleFanPost(post)))
+    : [];
+  return `<div class="profile-card public-profile-card artist-profile-card">
+    <div class="profile-card-head">${renderProfileAvatar(image, name, profile.username, true)}<div><span class="board-card-discipline">${board ? escapeHTML(board.discipline) : 'Artist'}</span><h2 class="profile-name">${escapeHTML(name)}</h2>${renderProfileHandle(profile)}</div></div>
+    ${board?.biography ? `<p class="profile-bio">${escapeHTML(board.biography)}</p>` : ''}
+    ${renderProfileStatus(profile.id)}
+    <div class="artist-profile-actions">${board ? `<a class="quiet-button" href="${hrefFor(boardRoute)}" data-route="${boardRoute}">View Artist Board ${icon('arrow', 14)}</a>` : isOwner ? `<p class="profile-bio-empty">Your Artist profile is empty until you create a board.</p><button class="primary-button" type="button" data-action="create-board">Create your Artist Board ${icon('arrow', 14)}</button>` : `<p class="profile-bio-empty">This Artist hasn’t created a board yet.</p>`}
+      ${isOwner && board ? `<button class="quiet-button" type="button" data-action="edit-profile">${icon('edit', 14)} Edit Profile</button>` : ''}
+    </div>
+  </div>
+  ${renderPublicShelves(profile.id)}
+  <section class="profile-board-section"><h2 class="section-heading">Fan Posts</h2>${posts.length ? `<div class="post-list">${posts.map((post) => renderPostCard(post)).join('')}</div>` : renderEmpty('No Fan posts yet.', board ? 'Fan posts on this Artist Board will appear here.' : 'Create an Artist Board to give Fans a place to share.')}</section>`;
+}
+
+function renderProfileSwitcher(account) {
+  const switcher = state.accounts.map((entry) => renderAccountChoice(entry, entry.id === account.id, true)).join('');
+  return `<section class="switcher-section" aria-labelledby="switcher-title">
+    <div class="switcher-heading"><h2 class="switcher-title" id="switcher-title">Accounts in this tab</h2><span class="switcher-caption">Switch between registered accounts</span></div>
+    <div class="switcher-list">${switcher}</div>
+    <div class="switcher-footer"><button class="outline-button" type="button" data-action="add-account">${icon('plus', 15)} Register another account</button></div>
+    <p class="form-note">Accounts are held in page memory only. They disappear when you refresh.</p>
+  </section>`;
+}
+
+function renderProfile() {
+  const account = activeAccount();
+  if (!account) return '';
+  const content = account.role === 'Artist'
+    ? renderArtistProfileContent(account, true)
+    : renderFanProfileContent(account, true);
+  return `<section><p class="eyebrow">Your corner</p><h1 class="page-title">Profile</h1><p class="page-subtitle">A profile without a popularity score.</p>
+    ${content}
+    ${renderProfileSwitcher(account)}
+  </section>`;
 }
 
 function renderPublicProfile(accountId) {
@@ -1242,19 +1340,143 @@ function renderPublicProfile(accountId) {
   if (!profile) {
     return `<section><p class="eyebrow">Member profile</p><h1 class="page-title">Profile not found.</h1><p class="page-subtitle">This profile isn’t available in this session.</p>${renderEmpty('No profile found.')}</section>`;
   }
-  const activity = accountActivityItems(profile.id);
-  const artistBoard = profile.role === 'Artist' ? boardForOwner(profile.id) : null;
-  const boardRoute = artistBoard ? `/board/${encodeURIComponent(artistBoard.id)}` : '';
-  return `<section><p class="eyebrow">A member of Stillroom</p><h1 class="page-title">${escapeHTML(profile.role)} profile</h1>
-    <div class="profile-card public-profile-card">
-      <div class="profile-card-head"><span class="profile-avatar">${escapeHTML((profile.name.trim()[0] || profile.username[0] || 'F').toUpperCase())}</span><div><h2 class="profile-name">${escapeHTML(profile.name)}</h2><p class="profile-meta">@${escapeHTML(profile.username)}</p></div></div>
-      <span class="role-pill">${escapeHTML(profile.role)}</span>
-      ${activeAccount()?.id === profile.id ? `<a class="quiet-button public-profile-settings" href="${hrefFor('/profile')}" data-route="/profile">Account settings ${icon('arrow', 14)}</a>` : ''}
-    </div>
-    ${artistBoard ? `<section class="profile-board-section"><h2 class="section-heading">Artist board</h2>${renderBoardCard(artistBoard)}</section>` : ''}
-    ${renderPublicShelves(profile.id)}
-    <h2 class="section-heading">Activity</h2>${activity.length ? `<div class="post-list">${activity.map(renderFeedItem).join('')}</div>` : renderEmpty('No posts or reposts yet.', 'Posts and reposts will appear here.')}
-  </section>`;
+  const isOwner = activeAccount()?.id === profile.id;
+  const title = profile.role === 'Artist' ? (boardForOwner(profile.id)?.artistName || profile.name) : profile.name;
+  const content = profile.role === 'Artist'
+    ? renderArtistProfileContent(profile, isOwner)
+    : renderFanProfileContent(profile, isOwner);
+  return `<section><p class="eyebrow">${isOwner ? 'Your profile' : 'A member of Stillroom'}</p><h1 class="page-title">${escapeHTML(title)}</h1>${content}${isOwner ? `<div class="profile-owner-settings"><a class="text-link" href="${hrefFor('/profile')}" data-route="/profile">Account settings ${icon('arrow', 14)}</a></div>` : ''}</section>`;
+}
+
+function beginProfileEdit() {
+  const account = activeAccount();
+  if (!account) return;
+  if (account.role === 'Artist') {
+    beginBoardForm(boardForOwner(account.id) ? 'edit' : 'create');
+    return;
+  }
+  state.profileDraft = {
+    name: account.name || '',
+    biography: account.biography || '',
+    profileImage: account.profileImage || '',
+  };
+  state.profileError = '';
+  state.profileFieldErrors = {};
+  state.profileImageError = '';
+  state.profileImageLoading = false;
+  state.profileImageToken += 1;
+  state.profileStatus = null;
+  state.editingProfile = true;
+  render();
+  app.querySelector('[name="profileName"]')?.focus();
+}
+
+function cancelProfileEdit() {
+  if (state.profileLoading) return;
+  state.profileDraft = null;
+  state.profileError = '';
+  state.profileFieldErrors = {};
+  state.profileImageError = '';
+  state.profileImageLoading = false;
+  state.profileImageToken += 1;
+  state.editingProfile = false;
+  render();
+}
+
+function cancelProfileOperation() {
+  if (state.profileTimer) window.clearTimeout(state.profileTimer);
+  state.profileTimer = null;
+  state.profilePending = null;
+  state.profileLoading = false;
+}
+
+function submitProfile(form) {
+  const account = activeAccount();
+  if (!account || account.role !== 'Fan' || !state.editingProfile || state.profileLoading) return;
+  const formData = new FormData(form);
+  const name = String(formData.get('profileName') || '').trim();
+  const biography = String(formData.get('profileBiography') || '').trim();
+  const errors = {};
+  if (!name) errors.name = 'Enter a display name.';
+  else if (name.length > 80) errors.name = 'Display names must be 80 characters or fewer.';
+  if (biography.length > 500) errors.biography = 'Biographies must be 500 characters or fewer.';
+  if (state.profileImageLoading) state.profileError = 'Wait for the profile image to finish loading.';
+  else state.profileError = '';
+  state.profileDraft = { ...(state.profileDraft || {}), name, biography };
+  state.profileFieldErrors = errors;
+  if (Object.keys(errors).length || state.profileError) {
+    render();
+    app.querySelector('[aria-invalid="true"]')?.focus();
+    return;
+  }
+
+  const values = {
+    name,
+    biography,
+    profileImage: state.profileDraft.profileImage || '',
+  };
+  state.profilePending = { userId: account.id, values };
+  state.profileLoading = true;
+  state.profileError = '';
+  render();
+  state.profileTimer = window.setTimeout(() => {
+    const pending = state.profilePending;
+    const profile = pending && state.accounts.find((entry) => entry.id === pending.userId && entry.role === 'Fan');
+    if (!pending || !profile) {
+      cancelProfileOperation();
+      state.profileError = 'Your profile could not be saved. Please try again.';
+      render();
+      return;
+    }
+    Object.assign(profile, pending.values);
+    state.profileStatus = { userId: pending.userId, message: 'Your profile has been updated.' };
+    state.profileDraft = null;
+    state.profileFieldErrors = {};
+    state.profileImageError = '';
+    state.editingProfile = false;
+    state.profilePending = null;
+    state.profileTimer = null;
+    state.profileLoading = false;
+    render();
+  }, 240);
+}
+
+function selectProfileImage(input) {
+  const account = activeAccount();
+  const file = input.files?.[0];
+  if (!account || account.role !== 'Fan' || !state.editingProfile || state.profileLoading || !file) return;
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    state.profileImageError = 'Choose a PNG, JPG, or WebP image.';
+    render();
+    return;
+  }
+  if (file.size > 4 * 1024 * 1024) {
+    state.profileImageError = 'Choose an image smaller than 4 MB.';
+    render();
+    return;
+  }
+  state.profileImageError = '';
+  state.profileImageLoading = true;
+  const token = ++state.profileImageToken;
+  render();
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (token !== state.profileImageToken || !state.profileDraft) return;
+    if (typeof reader.result !== 'string') {
+      state.profileImageError = 'The selected image could not be read.';
+    } else {
+      state.profileDraft = { ...state.profileDraft, profileImage: reader.result };
+    }
+    state.profileImageLoading = false;
+    render();
+  };
+  reader.onerror = () => {
+    if (token !== state.profileImageToken || !state.profileDraft) return;
+    state.profileImageError = 'The selected image could not be read.';
+    state.profileImageLoading = false;
+    render();
+  };
+  reader.readAsDataURL(file);
 }
 
 function render() {
@@ -1387,6 +1609,8 @@ function submitRegistration(form) {
     name,
     username,
     email,
+    biography: '',
+    profileImage: '',
     createdAt: Date.now(),
   };
   state.pendingAccount = account;
@@ -1904,8 +2128,16 @@ app?.addEventListener('input', (event) => {
   if (target instanceof HTMLInputElement && ['name', 'username', 'email'].includes(target.name)) {
     state.draft[target.name] = target.value;
   }
-  if (target instanceof HTMLInputElement && target.name === 'profile-name') {
-    state.profileDraft = target.value;
+  const profileField = target.name === 'profileName' ? 'name' : target.name === 'profileBiography' ? 'biography' : '';
+  if (profileField && state.editingProfile && state.profileDraft) {
+    state.profileDraft = { ...state.profileDraft, [profileField]: target.value };
+    if (state.profileFieldErrors[profileField]) {
+      delete state.profileFieldErrors[profileField];
+      target.removeAttribute('aria-invalid');
+      target.removeAttribute('aria-describedby');
+      app.querySelector(`#profile-${profileField}-error`)?.remove();
+    }
+    state.profileError = '';
   }
   if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)
     && target.closest('form[data-form="shelf"]')
@@ -1985,6 +2217,10 @@ app?.addEventListener('change', (event) => {
     selectPostMedia(target);
     return;
   }
+  if (target.matches('[data-profile-image]')) {
+    selectProfileImage(target);
+    return;
+  }
   if (!target.matches('[data-board-image]')) return;
   const file = target.files?.[0];
   if (!file) return;
@@ -2033,6 +2269,7 @@ app?.addEventListener('submit', (event) => {
   else if (form.dataset.form === 'shelf' && !state.shelfLoading) submitShelfForm(form);
   else if (form.dataset.form === 'shelf-picker' && !state.shelfLoading) submitShelfPicker(form);
   else if (form.dataset.form === 'comment' && !state.commentPending) submitComment(form);
+  else if (form.dataset.form === 'profile' && !state.profileLoading && !state.profileImageLoading) submitProfile(form);
 });
 
 app?.addEventListener('click', (event) => {
@@ -2056,6 +2293,13 @@ app?.addEventListener('click', (event) => {
     navigate(activeAccount() ? '/profile' : '/');
   } else if (action === 'open-profile') navigate('/profile', { replace: true });
   else if (action === 'switch-account') {
+    cancelProfileOperation();
+    state.profileDraft = null;
+    state.profileError = '';
+    state.profileFieldErrors = {};
+    state.profileImageToken += 1;
+    state.profileImageLoading = false;
+    state.profileImageError = '';
     state.shelfPickerPostId = null;
     state.shelfPickerSelection = [];
     state.shelfPickerError = '';
@@ -2076,6 +2320,13 @@ app?.addEventListener('click', (event) => {
     state.route = '/profile';
     navigate('/profile');
   } else if (action === 'logout') {
+    cancelProfileOperation();
+    state.profileDraft = null;
+    state.profileError = '';
+    state.profileFieldErrors = {};
+    state.profileImageToken += 1;
+    state.profileImageLoading = false;
+    state.profileImageError = '';
     state.shelfPickerPostId = null;
     state.shelfPickerSelection = [];
     state.shelfPickerError = '';
@@ -2126,28 +2377,23 @@ app?.addEventListener('click', (event) => {
     state.searchOpen = false;
     render();
   } else if (action === 'edit-profile') {
-    state.profileDraft = activeAccount()?.name || '';
-    state.profileError = '';
-    state.editingProfile = true;
-    render();
-    app.querySelector('[name="profile-name"]')?.focus();
-  } else if (action === 'save-profile') {
-    const name = state.profileDraft.trim();
-    if (!name) {
-      state.profileError = 'Your name can’t be empty.';
+    beginProfileEdit();
+  } else if (action === 'remove-profile-image') {
+    if (state.editingProfile && !state.profileLoading && state.profileDraft) {
+      state.profileDraft = { ...state.profileDraft, profileImage: '' };
+      state.profileImageError = '';
+      state.profileImageToken += 1;
+      state.profileImageLoading = false;
       render();
-      app.querySelector('[name="profile-name"]')?.focus();
-      return;
     }
-    const account = activeAccount();
-    if (account) account.name = name;
-    state.profileError = '';
-    state.editingProfile = false;
-    render();
   } else if (action === 'cancel-profile-edit') {
-    state.profileError = '';
-    state.editingProfile = false;
-    render();
+    cancelProfileEdit();
+  } else if (action === 'profile-activity-tab') {
+    const profile = state.accounts.find((entry) => entry.id === target.dataset.profileId && entry.role === 'Fan');
+    if (profile && ['posts', 'reposts'].includes(target.dataset.tab)) {
+      state.profileActivityTabs[profile.id] = target.dataset.tab;
+      render();
+    }
   } else if (action === 'add-account') {
     state.editingProfile = false;
     beginRegistration(null);

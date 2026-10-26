@@ -11,4 +11,6 @@ Explore must search existing Artist accounts, boards, and original Fan posts tog
 
 **Why:** The user explicitly requested searchable, combined Explore filters and recent-first results without likes, follower counts, or popularity ranking.
 
-**How to apply:** Implement new product behavior in frontend state, store reposts as links to original posts, keep Fan follows and Shelves account-scoped, show only public Shelves on profiles, keep empty states truthful, and do not seed users, artists, boards, Shelves, posts, reposts, or comments. Keep Explore ordering based on creation/publication time, never popularity.
+**Why:** Fan posts and comments retain username snapshots; changing a handle without updating those records would leave stale public attributions.
+
+**How to apply:** Implement new product behavior in frontend state, store reposts as links to original posts, keep Fan follows and Shelves account-scoped, show only public Shelves on profiles, keep empty states truthful, and do not seed users, artists, boards, Shelves, posts, reposts, or comments. Keep Explore ordering based on creation/publication time, never popularity. Keep usernames stable unless all visible snapshots and links are updated together.

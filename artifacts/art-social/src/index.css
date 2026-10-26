@@ -173,6 +173,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   cursor: pointer;
 }
 .account-choice:hover { border-color: var(--rust); background: #f0e9de; }
+.account-choice-row { display: flex; min-width: 0; align-items: stretch; gap: 8px; }
+.account-choice-row .account-choice { min-width: 0; flex: 1; }
+.account-choice-profile-link { display: flex; min-width: 70px; align-items: center; justify-content: center; color: var(--muted); font-size: 10px; }
+.account-choice-profile-link:hover { color: var(--rust); }
 .account-choice-name { font: 500 15px 'Playfair Display', Georgia, serif; }
 .account-choice-meta { display: block; margin-top: 4px; color: var(--faint); font-size: 10px; }
 .account-choice-role { color: var(--rust); font: 9px 'DM Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
@@ -271,7 +275,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .sidebar-user { display: flex; align-items: center; gap: 10px; padding: 12px 5px 0; border-top: 1px solid var(--line); }
 .avatar-mark { display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; border: 1px solid var(--line-dark); border-radius: 50%; color: var(--rust); font: 500 12px 'Playfair Display', Georgia, serif; }
 .sidebar-user-name { overflow: hidden; font: 500 13px 'Playfair Display', Georgia, serif; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-user-handle { margin-top: 3px; color: var(--faint); font-size: 9px; }
+.sidebar-user-handle { display: block; width: fit-content; margin-top: 3px; color: var(--faint); font-size: 9px; }
+.sidebar-user-handle:hover, .profile-handle-link:hover { color: var(--rust); }
 .app-main { min-height: 100vh; margin-left: 244px; }
 .topbar {
   position: sticky;
@@ -549,8 +554,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .profile-activity > .section-heading { margin-top: 0; }
 .profile-card-head { display: flex; align-items: center; gap: 16px; }
 .profile-avatar { display: grid; width: 57px; height: 57px; place-items: center; border: 1px solid var(--line-dark); border-radius: 50%; color: var(--rust); font: 500 20px 'Playfair Display', Georgia, serif; }
+.profile-avatar-large { width: 88px; height: 88px; flex: 0 0 auto; font-size: 34px; }
+.profile-avatar-image { object-fit: cover; }
 .profile-name { margin: 0; font: 500 25px 'Playfair Display', Georgia, serif; }
 .profile-meta { margin: 5px 0 0; color: var(--faint); font-size: 11px; }
+.profile-handle-link { display: inline-block; text-decoration: none; }
+.profile-bio { max-width: 650px; margin: 18px 0 0; color: var(--muted); font-size: 12px; line-height: 1.8; white-space: pre-wrap; }
+.profile-bio-empty { display: block; margin-top: 15px; color: var(--faint); font-size: 10px; line-height: 1.6; }
+.artist-profile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+.artist-profile-actions .profile-bio-empty { flex-basis: 100%; }
+.profile-success { margin-top: 16px; }
+.profile-form { max-width: 620px; margin-top: 20px; }
+.profile-form .field-label { margin-top: 14px; }
+.profile-username-readonly { color: var(--muted); opacity: .8; }
+.profile-image-preview { display: flex; align-items: center; gap: 13px; margin-top: 14px; padding: 12px; border: 1px solid var(--line); }
+.profile-image-preview img { width: 58px; height: 58px; border: 1px solid var(--line); border-radius: 50%; object-fit: cover; }
+.profile-form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.profile-activity-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.profile-activity-heading .section-heading { margin: 0; }
+.profile-tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--line); }
+.profile-tab { position: relative; padding: 0 0 10px; border: 0; background: transparent; color: var(--faint); font-size: 10px; cursor: pointer; }
+.profile-tab[aria-selected="true"] { color: var(--ink); }
+.profile-tab[aria-selected="true"]::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; background: var(--rust); content: ''; }
+.profile-owner-settings { margin-top: 25px; }
 .role-pill { display: inline-block; margin-top: 15px; padding: 5px 9px; border: 1px solid var(--line); color: var(--rust); font: 9px 'DM Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
 .profile-edit { margin-top: 19px; }
 .switcher-section { max-width: 700px; margin-top: 34px; }
@@ -619,6 +645,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .shelf-post-toolbar { align-items: flex-start; flex-direction: column; }
   .post-draft-inline { align-items: flex-start; flex-direction: column; }
   .post-delete-confirm { justify-content: flex-start; flex-wrap: wrap; }
+  .profile-card-head { align-items: flex-start; }
+  .profile-avatar-large { width: 72px; height: 72px; font-size: 28px; }
+  .profile-activity-heading { align-items: flex-start; flex-direction: column; gap: 13px; }
+  .profile-tabs { width: 100%; }
+  .profile-form-actions { align-items: stretch; flex-direction: column; }
   .explore-controls { align-items: stretch; flex-direction: column; }
   .explore-search { flex: auto; }
   .explore-discipline-label { min-width: 0; }
