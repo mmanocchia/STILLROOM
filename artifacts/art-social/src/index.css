@@ -319,11 +319,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .section-rule { margin: 32px 0 0; border: 0; border-top: 1px solid var(--line); }
 .explore-search {
   display: flex;
-  max-width: 560px;
+  min-width: 0;
+  flex: 1;
   height: 44px;
   align-items: center;
   gap: 10px;
-  margin-top: 27px;
   padding: 0 12px;
   border: 1px solid var(--line-dark);
   color: var(--faint);
@@ -332,6 +332,34 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .explore-search input:focus { outline: 0; }
 .explore-search input::placeholder { color: #a39b90; }
 .explore-search [hidden] { display: none; }
+.explore-controls { display: flex; max-width: 780px; align-items: end; gap: 12px; margin-top: 27px; }
+.explore-discipline-label { display: grid; min-width: 170px; gap: 6px; }
+.explore-discipline { width: 100%; height: 44px; padding: 0 32px 0 12px; border: 1px solid var(--line-dark); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 11px; }
+.explore-result-count { margin: 24px 0 0; color: var(--faint); font: 9px 'DM Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
+.explore-result-section { margin-top: 25px; }
+.explore-result-section > .section-heading { margin: 0 0 12px; }
+.explore-artist-list, .explore-post-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 11px; }
+.explore-artist-result, .explore-post-result { position: relative; display: flex; min-width: 0; align-items: center; gap: 13px; padding: 15px; border: 1px solid var(--line); background: rgba(255,255,255,.13); transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.explore-artist-result:hover, .explore-post-result:hover { border-color: var(--line-dark); background: rgba(238,232,220,.62); transform: translateY(-1px); }
+.explore-artist-mark { display: grid; width: 46px; height: 46px; flex: 0 0 auto; place-items: center; border: 1px solid var(--line-dark); border-radius: 50%; background: var(--paper-deep); color: var(--rust); font: 500 20px 'Playfair Display', Georgia, serif; }
+.explore-artist-copy { display: grid; min-width: 0; gap: 5px; }
+.explore-artist-name { overflow: hidden; color: var(--ink); font: 500 17px/1.2 'Playfair Display', Georgia, serif; text-overflow: ellipsis; white-space: nowrap; }
+.explore-artist-meta { color: var(--muted); font-size: 10px; }
+.explore-artist-result > .icon, .explore-post-result > .icon { margin-left: auto; color: var(--rust); }
+.explore-post-result { display: grid; align-content: start; gap: 7px; }
+.explore-post-kicker { color: var(--rust); font: 9px 'DM Mono', monospace; letter-spacing: .1em; text-transform: uppercase; }
+.explore-post-title { overflow-wrap: anywhere; color: var(--ink); font: 500 17px/1.35 'Playfair Display', Georgia, serif; }
+.explore-post-excerpt { color: var(--muted); font-size: 10px; line-height: 1.55; }
+.explore-post-credit { color: var(--faint); font-size: 9px; }
+.explore-post-result > .icon { position: absolute; top: 14px; right: 14px; }
+.explore-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 25px; padding: 16px; border: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.explore-loading { justify-content: center; color: var(--faint); }
+.explore-error { border-color: #d9b9ae; background: #f5eae5; }
+.explore-feedback-title, .explore-feedback-copy { flex-basis: 100%; margin: 0; }
+.explore-feedback-title { color: var(--ink); font: 500 16px 'Playfair Display', Georgia, serif; }
+.explore-feedback-copy { color: var(--muted); font-size: 10px; }
+.explore-no-results .empty-state { min-height: 220px; }
+.post-open-highlight { outline: 2px solid var(--rust); outline-offset: 5px; transition: outline-color .5s ease; }
 .board-results-heading { margin: 28px 0 12px; }
 .board-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 12px; margin-top: 25px; }
 .board-card {
@@ -591,6 +619,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .shelf-post-toolbar { align-items: flex-start; flex-direction: column; }
   .post-draft-inline { align-items: flex-start; flex-direction: column; }
   .post-delete-confirm { justify-content: flex-start; flex-wrap: wrap; }
+  .explore-controls { align-items: stretch; flex-direction: column; }
+  .explore-search { flex: auto; }
+  .explore-discipline-label { min-width: 0; }
+  .explore-artist-list, .explore-post-list { grid-template-columns: 1fr; }
   .mobile-nav {
     position: fixed;
     z-index: 6;

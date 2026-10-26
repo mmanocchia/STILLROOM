@@ -35,6 +35,10 @@ const state = {
   profileDraft: '',
   profileError: '',
   exploreQuery: '',
+  exploreDiscipline: 'all',
+  exploreLoading: false,
+  exploreError: '',
+  exploreTimer: null,
   boardDraft: null,
   boardErrors: {},
   boardLoading: false,
@@ -127,6 +131,11 @@ function navigate(path, { replace = false } = {}) {
   if (state.loading && path !== state.route) cancelRegistration();
   if (state.boardLoading && path !== state.route) cancelBoardOperation();
   if (state.shelfLoading && path !== state.route) cancelShelfOperation();
+  if (state.exploreTimer && !path.startsWith('/explore')) {
+    window.clearTimeout(state.exploreTimer);
+    state.exploreTimer = null;
+    state.exploreLoading = false;
+  }
   if (replace) history.replaceState({}, '', hrefFor(path));
   else if (getRoute() !== path) history.pushState({}, '', hrefFor(path));
   state.route = path;
@@ -215,6 +224,76 @@ function accountActivityItems(accountId) {
 function isVisibleFanPost(post) {
   const author = state.accounts.find((account) => account.id === post.authorId);
   return author?.role === 'Fan' && state.boards.some((board) => board.id === post.boardId);
+}
+
+const exploreDisciplines = ['Music', 'Film', 'Photography', 'Painting', 'Fashion'];
+
+function disciplineMatchesFilter(discipline, filter) {
+  if (filter === 'all') return true;
+  const value = String(discipline || '').trim().toLocaleLowerCase();
+  const aliases = {
+    Music: ['music', 'musician', 'singer', 'songwriter', 'composer', 'sound'],
+    Film: ['film', 'filmmaker', 'cinema', 'cinematographer', 'director'],
+    Photography: ['photography', 'photographer', 'photo'],
+    Painting: ['painting', 'painter'],
+    Fashion: ['fashion', 'clothing', 'textile'],
+  };
+  const containsDisciplineTerm = (category) => aliases[category].some((term) => new RegExp(`(^|[^a-z])${term}([^a-z]|$)`, 'i').test(value));
+  if (filter === 'Other') return !exploreDisciplines.some(containsDisciplineTerm);
+  return containsDisciplineTerm(filter) || value === filter.toLocaleLowerCase();
+}
+
+function exploreTextMatches(query, values) {
+  const terms = query.trim().toLocaleLowerCase().replaceAll('@', '').split(/\s+/).filter(Boolean);
+  const searchable = values.flat(Infinity)
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => String(value).toLocaleLowerCase())
+    .join(' ');
+  return terms.every((term) => searchable.includes(term));
+}
+
+function exploreResults() {
+  const query = state.exploreQuery;
+  const discipline = state.exploreDiscipline;
+  const boards = state.boards
+    .filter((board) => {
+      const owner = state.accounts.find((account) => account.id === board.ownerId);
+      return disciplineMatchesFilter(board.discipline, discipline)
+        && exploreTextMatches(query, [board.artistName, board.discipline, board.biography, owner?.name, owner?.username]);
+    })
+    .sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0));
+
+  const artists = state.accounts
+    .filter((account) => account.role === 'Artist')
+    .filter((account) => {
+      const board = boardForOwner(account.id);
+      return (discipline === 'all' || (board && disciplineMatchesFilter(board.discipline, discipline)))
+        && exploreTextMatches(query, [account.name, account.username, board?.artistName, board?.discipline, board?.biography]);
+    })
+    .sort((left, right) => {
+      const leftBoard = boardForOwner(left.id);
+      const rightBoard = boardForOwner(right.id);
+      return (rightBoard?.createdAt || right.createdAt || 0) - (leftBoard?.createdAt || left.createdAt || 0);
+    });
+
+  const posts = state.posts
+    .filter((post) => {
+      if (!isVisibleFanPost(post)) return false;
+      const board = state.boards.find((entry) => entry.id === post.boardId);
+      const author = state.accounts.find((entry) => entry.id === post.authorId);
+      const artist = state.accounts.find((entry) => entry.id === board?.ownerId);
+      const keywords = Array.isArray(post.keywords) ? post.keywords : [post.keywords];
+      return board
+        && disciplineMatchesFilter(board.discipline, discipline)
+        && exploreTextMatches(query, [
+          board.artistName, board.discipline, artist?.name, artist?.username,
+          author?.name, author?.username, post.title, post.artworkTitle, post.content,
+          keywords, post.media?.name,
+        ]);
+    })
+    .sort((left, right) => right.publishedAt - left.publishedAt);
+
+  return { artists, boards, posts };
 }
 
 function postDraftKey(authorId, boardId, postId = null) {
@@ -352,7 +431,7 @@ function navLink(item, currentRoute) {
   const active = item.path === currentRoute
     || (item.path === '/home' && currentRoute === '/')
     || (item.path === '/artists' && currentRoute.startsWith('/artists/'))
-    || (item.path === '/explore' && currentRoute.startsWith('/board/'))
+    || (item.path === '/explore' && (currentRoute.startsWith('/board/') || currentRoute.startsWith('/post/')))
     || (item.path === '/shelves' && currentRoute.startsWith('/shelves/'))
     || (item.path === '/profile' && currentRoute.startsWith('/profile/'));
   return `<a class="nav-link" href="${hrefFor(item.path)}" data-route="${item.path}" ${active ? 'aria-current="page"' : ''}>${icon(item.icon)}<span>${item.label}</span></a>`;
@@ -541,7 +620,7 @@ function renderPostCard(post) {
   const shelfStatus = state.shelfStatus?.ownerId === account?.id && state.shelfStatus?.postId === post.id
     ? `<p class="shelf-post-status" role="status">${icon('check', 13)}${escapeHTML(state.shelfStatus.message)}</p>`
     : '';
-  return `<article class="post-card">
+  return `<article class="post-card" id="post-card-${escapeHTML(post.id)}">
     <div class="post-card-heading">
       <div class="post-author"><span class="post-avatar" aria-hidden="true">${escapeHTML((post.authorUsername[0] || 'F').toUpperCase())}</span><span><a class="post-author-name" href="${hrefFor(profileRoute)}" data-route="${profileRoute}">@${escapeHTML(post.authorUsername)}</a><span class="post-date">Published ${escapeHTML(formatPostDate(post.publishedAt))}</span></span></div>
       <span class="post-board-context">On <a class="post-board-link" href="${hrefFor(boardRoute)}" data-route="${boardRoute}">${escapeHTML(board.artistName)}</a>’s board ${icon('arrow', 12)}</span>
@@ -614,27 +693,103 @@ function renderBoardComposer(board) {
   return `<div class="post-create-trigger"><button class="primary-button" type="button" data-action="start-post" data-board-id="${escapeHTML(board.id)}">${icon('plus', 15)} Write a post</button></div>`;
 }
 
-function renderExploreResults() {
-  const query = state.exploreQuery.trim().toLocaleLowerCase();
-  const matches = state.boards.filter((board) => {
-    const owner = state.accounts.find((account) => account.id === board.ownerId);
-    return [board.artistName, board.discipline, board.biography, owner?.username]
-      .filter(Boolean)
-      .some((value) => value.toLocaleLowerCase().includes(query));
-  });
+function renderExploreArtist(account) {
+  const board = boardForOwner(account.id);
+  const route = `/profile/${encodeURIComponent(account.id)}`;
+  const discipline = board?.discipline || 'Artist';
+  return `<a class="explore-artist-result" href="${hrefFor(route)}" data-route="${route}">
+    <span class="explore-artist-mark" aria-hidden="true">${escapeHTML((account.name.trim()[0] || account.username[0] || 'A').toUpperCase())}</span>
+    <span class="explore-artist-copy"><span class="explore-artist-name">${escapeHTML(board?.artistName || account.name)}</span><span class="explore-artist-meta">@${escapeHTML(account.username)} · ${escapeHTML(discipline)}</span></span>
+    ${icon('arrow', 15)}
+  </a>`;
+}
 
-  if (!state.boards.length) {
-    return renderEmpty('No artist boards yet.', 'When artists create their boards, you’ll find them here.');
+function renderExplorePost(post) {
+  const board = state.boards.find((entry) => entry.id === post.boardId);
+  const author = state.accounts.find((entry) => entry.id === post.authorId);
+  if (!board || !author) return '';
+  const route = `/post/${encodeURIComponent(post.id)}`;
+  const title = post.title || post.artworkTitle || (post.media?.name ? post.media.name.replace(/\.[^.]+$/, '') : '');
+  const excerpt = post.content?.trim() || (post.media?.type === 'video' ? 'Video post' : post.media?.type === 'image' ? 'Image post' : 'Fan post');
+  return `<a class="explore-post-result" href="${hrefFor(route)}" data-route="${route}">
+    <span class="explore-post-kicker">${escapeHTML(board.discipline)} · ${escapeHTML(formatPostDate(post.publishedAt))}</span>
+    <span class="explore-post-title">${escapeHTML(title || excerpt.slice(0, 92))}</span>
+    ${title && post.content ? `<span class="explore-post-excerpt">${escapeHTML(excerpt.slice(0, 150))}</span>` : ''}
+    <span class="explore-post-credit">By @${escapeHTML(author.username)} · On ${escapeHTML(board.artistName)}’s board</span>
+    ${icon('arrow', 15)}
+  </a>`;
+}
+
+function renderExploreError() {
+  return `<div class="explore-feedback explore-error" role="alert"><p class="explore-feedback-title">Explore couldn’t load these results.</p><p class="explore-feedback-copy">Your in-memory content is still here. Try again or reset your search.</p><button class="quiet-button" type="button" data-action="retry-explore">Try again</button><button class="text-button" type="button" data-action="reset-explore">Reset search and filters</button></div>`;
+}
+
+function renderExploreResults() {
+  if (state.exploreError) return renderExploreError();
+  if (state.exploreLoading) {
+    return `<div class="explore-feedback explore-loading" role="status" aria-live="polite"><span class="loading-dot"></span>Searching your Stillroom…</div>`;
   }
-  if (!matches.length) {
-    return `<div id="explore-results-empty">${renderEmpty('No boards match your search.', 'Try a different artist name or discipline.')}<div class="empty-action"><button class="quiet-button" type="button" data-action="clear-explore-search">Clear search</button></div></div>`;
+  const { artists, boards, posts } = exploreResults();
+  const total = artists.length + boards.length + posts.length;
+  if (!total) {
+    const hasCriteria = state.exploreQuery.trim() || state.exploreDiscipline !== 'all';
+    if (!hasCriteria) return renderEmpty('Nothing to discover yet.', 'Artist profiles, boards, and Fan posts will appear here when they’re created.');
+    return `<div class="explore-no-results">${renderEmpty('No results found.', 'Try another search or clear the selected discipline.')}<div class="empty-action"><button class="quiet-button" type="button" data-action="reset-explore">Reset search and filters</button></div></div>`;
   }
-  return `<div class="board-results-heading"><span class="eyebrow">${matches.length} ${matches.length === 1 ? 'board' : 'boards'}</span></div><div class="board-grid">${matches.map(renderBoardCard).join('')}</div>`;
+
+  const countLine = `${artists.length} ${artists.length === 1 ? 'artist' : 'artists'} · ${boards.length} ${boards.length === 1 ? 'board' : 'boards'} · ${posts.length} ${posts.length === 1 ? 'post' : 'posts'}`;
+  return `<p class="explore-result-count" role="status">${countLine}</p>
+    ${artists.length ? `<section class="explore-result-section"><h2 class="section-heading">Artists</h2><div class="explore-artist-list">${artists.map(renderExploreArtist).join('')}</div></section>` : ''}
+    ${boards.length ? `<section class="explore-result-section"><h2 class="section-heading">${state.exploreQuery.trim() || state.exploreDiscipline !== 'all' ? 'Artist Boards' : 'Recently created boards'}</h2><div class="board-grid">${boards.map(renderBoardCard).join('')}</div></section>` : ''}
+    ${posts.length ? `<section class="explore-result-section"><h2 class="section-heading">${state.exploreQuery.trim() || state.exploreDiscipline !== 'all' ? 'Fan Posts' : 'Recent posts'}</h2><div class="explore-post-list">${posts.map(renderExplorePost).join('')}</div></section>` : ''}`;
+}
+
+function queueExploreSearch() {
+  if (state.exploreTimer) window.clearTimeout(state.exploreTimer);
+  state.exploreError = '';
+  state.exploreLoading = true;
+  const results = app.querySelector('#explore-results');
+  if (results) {
+    results.setAttribute('aria-busy', 'true');
+    results.innerHTML = renderExploreResults();
+  }
+  state.exploreTimer = window.setTimeout(() => {
+    state.exploreTimer = null;
+    state.exploreLoading = false;
+    try {
+      const latestResults = app.querySelector('#explore-results');
+      if (latestResults) {
+        latestResults.removeAttribute('aria-busy');
+        latestResults.innerHTML = renderExploreResults();
+      }
+    } catch {
+      state.exploreError = 'search-failed';
+      const latestResults = app.querySelector('#explore-results');
+      if (latestResults) {
+        latestResults.removeAttribute('aria-busy');
+        latestResults.innerHTML = renderExploreResults();
+      }
+    }
+  }, 140);
+}
+
+function resetExplore() {
+  if (state.exploreTimer) window.clearTimeout(state.exploreTimer);
+  state.exploreTimer = null;
+  state.exploreQuery = '';
+  state.exploreDiscipline = 'all';
+  state.exploreLoading = false;
+  state.exploreError = '';
+  render();
 }
 
 function renderExplore() {
-  return `<section><p class="eyebrow">Find your next room</p><h1 class="page-title">Explore</h1><p class="page-subtitle">Discover artist boards by name, discipline, or description.</p>
-    <label class="explore-search">${icon('search', 16)}<input type="search" data-explore-search aria-label="Search artist boards" placeholder="Search artists or disciplines" value="${escapeHTML(state.exploreQuery)}"><button class="icon-button" type="button" data-action="clear-explore-search" aria-label="Clear search" ${state.exploreQuery ? '' : 'hidden'}>${icon('close', 15)}</button></label>
+  const disciplines = ['all', ...exploreDisciplines, 'Other'];
+  return `<section><p class="eyebrow">Find your next room</p><h1 class="page-title">Explore</h1><p class="page-subtitle">Search artists, boards, and Fan posts by name, username, title, or keywords.</p>
+    <div class="explore-controls">
+      <label class="explore-search">${icon('search', 16)}<input type="search" data-explore-search aria-label="Search artists, boards, and posts" placeholder="Search names, titles, or keywords" value="${escapeHTML(state.exploreQuery)}"><button class="icon-button" type="button" data-action="clear-explore-search" aria-label="Clear search" ${state.exploreQuery ? '' : 'hidden'}>${icon('close', 15)}</button></label>
+      <label class="explore-discipline-label"><span class="eyebrow">Discipline</span><select class="explore-discipline" data-explore-discipline aria-label="Filter by discipline">${disciplines.map((discipline) => `<option value="${discipline === 'all' ? 'all' : escapeHTML(discipline)}" ${state.exploreDiscipline === (discipline === 'all' ? 'all' : discipline) ? 'selected' : ''}>${discipline === 'all' ? 'All disciplines' : escapeHTML(discipline)}</option>`).join('')}</select></label>
+    </div>
     <div id="explore-results" aria-live="polite">${renderExploreResults()}</div>
   </section>`;
 }
@@ -1121,11 +1276,12 @@ function render() {
   }
 
   const boardRoute = state.route.match(/^\/board\/([^/]+)$/);
+  const postRoute = state.route.match(/^\/post\/([^/]+)$/);
   const publicProfileRoute = state.route.match(/^\/profile\/([^/]+)$/);
   const shelfEditRoute = state.route.match(/^\/shelves\/([^/]+)\/edit$/);
   const shelfDetailRoute = state.route.match(/^\/shelves\/([^/]+)$/);
   const specialRoute = ['/artists/new', '/artists/edit', '/shelves/new'].includes(state.route)
-    || Boolean(boardRoute) || Boolean(publicProfileRoute) || Boolean(shelfEditRoute) || Boolean(shelfDetailRoute);
+    || Boolean(boardRoute) || Boolean(postRoute) || Boolean(publicProfileRoute) || Boolean(shelfEditRoute) || Boolean(shelfDetailRoute);
   if (!navItems.some((item) => item.path === state.route) && state.route !== '/' && !specialRoute) state.route = '/home';
   let content;
   let title;
@@ -1139,6 +1295,16 @@ function render() {
     const board = state.boards.find((entry) => entry.id === boardId);
     content = renderBoardDetail(boardId);
     title = board?.artistName || 'Artist board';
+  }
+  else if (postRoute) {
+    let postId = postRoute[1];
+    try { postId = decodeURIComponent(postId); } catch { /* Keep the unmatched route in the not-found state. */ }
+    const post = state.posts.find((entry) => entry.id === postId);
+    const board = post && state.boards.find((entry) => entry.id === post.boardId);
+    content = board
+      ? renderBoardDetail(board.id)
+      : `<section><p class="eyebrow">Fan post</p><h1 class="page-title">Post not found.</h1><p class="page-subtitle">This post isn’t available in this session.</p>${renderEmpty('No post found.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Back to Explore ${icon('arrow', 14)}</a></div></section>`;
+    title = board?.artistName || 'Fan post';
   }
   else if (publicProfileRoute) {
     let profileId = publicProfileRoute[1];
@@ -1165,6 +1331,18 @@ function render() {
   else if (state.route === '/profile') { content = renderProfile(); title = 'Profile'; }
   else { content = renderHome(); title = 'Stillroom'; }
   app.innerHTML = renderShell(content, title);
+  if (postRoute) {
+    let postId = postRoute[1];
+    try { postId = decodeURIComponent(postId); } catch { /* Leave the board at its normal scroll position. */ }
+    requestAnimationFrame(() => {
+      const target = document.getElementById(`post-card-${postId}`);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('post-open-highlight');
+        window.setTimeout(() => target.classList.remove('post-open-highlight'), 1600);
+      }
+    });
+  }
 }
 
 function beginRegistration(role = null) {
@@ -1209,6 +1387,7 @@ function submitRegistration(form) {
     name,
     username,
     email,
+    createdAt: Date.now(),
   };
   state.pendingAccount = account;
   state.loading = true;
@@ -1278,6 +1457,7 @@ function submitBoard(form) {
     discipline,
     biography,
     profileImage: state.boardDraft.profileImage || '',
+    createdAt: existing?.createdAt || Date.now(),
   };
   state.pendingBoard = { mode, board };
   state.boardLoading = true;
@@ -1783,15 +1963,19 @@ app?.addEventListener('input', (event) => {
   }
   if (target instanceof HTMLInputElement && target.matches('[data-explore-search]')) {
     state.exploreQuery = target.value;
-    const results = app.querySelector('#explore-results');
-    if (results) results.innerHTML = renderExploreResults();
     const clearButton = app.querySelector('[data-action="clear-explore-search"]');
     if (clearButton) clearButton.hidden = !state.exploreQuery;
+    queueExploreSearch();
   }
 });
 
 app?.addEventListener('change', (event) => {
   const target = event.target;
+  if (target instanceof HTMLSelectElement && target.matches('[data-explore-discipline]')) {
+    state.exploreDiscipline = target.value;
+    queueExploreSearch();
+    return;
+  }
   if (!(target instanceof HTMLInputElement)) return;
   if (target.matches('input[name="shelfIds"]')) {
     state.shelfPickerSelection = [...app.querySelectorAll('input[name="shelfIds"]:checked')].map((input) => input.value);
@@ -2079,7 +2263,16 @@ app?.addEventListener('click', (event) => {
     deletePost(target.dataset.postId);
   } else if (action === 'clear-explore-search') {
     state.exploreQuery = '';
-    render();
+    state.exploreError = '';
+    const searchInput = app.querySelector('[data-explore-search]');
+    if (searchInput) searchInput.value = '';
+    const clearButton = app.querySelector('[data-action="clear-explore-search"]');
+    if (clearButton) clearButton.hidden = true;
+    queueExploreSearch();
+  } else if (action === 'reset-explore') {
+    resetExplore();
+  } else if (action === 'retry-explore') {
+    queueExploreSearch();
   }
 });
 
@@ -2091,7 +2284,7 @@ window.addEventListener('popstate', () => {
   render();
 });
 
-const initialSpecialRoute = /^\/(?:board\/[^/]+|profile\/[^/]+|artists\/(?:new|edit)|shelves\/(?:new|[^/]+(?:\/edit)?))$/.test(state.route);
+const initialSpecialRoute = /^\/(?:board\/[^/]+|post\/[^/]+|profile\/[^/]+|artists\/(?:new|edit)|shelves\/(?:new|[^/]+(?:\/edit)?))$/.test(state.route);
 if (!navItems.some((item) => item.path === state.route) && state.route !== '/' && state.route !== '/register' && state.route !== '/confirmation' && !initialSpecialRoute) {
   state.route = '/';
   history.replaceState({}, '', hrefFor('/'));

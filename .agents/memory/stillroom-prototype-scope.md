@@ -5,6 +5,10 @@ description: Product constraints for Stillroom's frontend prototype and future f
 
 Keep Stillroom as a vanilla HTML, CSS, and JavaScript single-page frontend. Accounts, artist boards, private per-Fan follows, posts, reference-only reposts, comments, personal Shelves, saved-post associations, and uploaded media are temporary browser-memory data. Do not add backend persistence, a database, real authentication, external API calls, or fictional/demo content unless the user explicitly asks.
 
+Explore must search existing Artist accounts, boards, and original Fan posts together, apply discipline filters to every result type, and use recency rather than popularity for ordering.
+
 **Why:** The user repeatedly specified these limits while building Stillroom incrementally.
 
-**How to apply:** Implement new product behavior in frontend state, store reposts as links to original posts, keep Fan follows and Shelves account-scoped, show only public Shelves on profiles, keep empty states truthful, and do not seed users, artists, boards, Shelves, posts, reposts, or comments.
+**Why:** The user explicitly requested searchable, combined Explore filters and recent-first results without likes, follower counts, or popularity ranking.
+
+**How to apply:** Implement new product behavior in frontend state, store reposts as links to original posts, keep Fan follows and Shelves account-scoped, show only public Shelves on profiles, keep empty states truthful, and do not seed users, artists, boards, Shelves, posts, reposts, or comments. Keep Explore ordering based on creation/publication time, never popularity.
