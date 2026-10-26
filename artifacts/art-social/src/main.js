@@ -462,9 +462,7 @@ function renderShell(content, pageTitle) {
   const currentName = escapeHTML(account?.name || '');
   const currentUser = escapeHTML(account?.username || '');
   const currentProfileRoute = account ? `/profile/${encodeURIComponent(account.id)}` : '/profile';
-  const searchControl = state.searchOpen
-    ? `<label class="search-wrap">${icon('search', 15)}<input aria-label="Search artist boards" placeholder="Search" autocomplete="off"><button class="icon-button" type="button" data-action="close-search" aria-label="Close search">${icon('close', 15)}</button></label>`
-    : `<button class="icon-button" type="button" data-action="open-search" aria-label="Open search">${icon('search', 17)}<span class="search-label">Search</span></button>`;
+  const searchControl = `<button class="icon-button" type="button" data-action="open-search" aria-label="Search artists, boards, and posts">${icon('search', 17)}<span class="search-label">Search</span></button>`;
   return `<div class="paper-grain app-shell">
     <aside class="sidebar">
       <div class="sidebar-brand">${brand()}</div>
@@ -529,7 +527,7 @@ function renderHome() {
   } else if (selected) {
     content = renderEmpty('Nothing here yet. Discover artists and start collecting.');
   } else if (!hasFollowedArtists) {
-    const title = account?.role === 'Fan' ? "You haven't added any artists to My Artists yet." : 'No artists in My Artists yet.';
+    const title = account?.role === 'Fan' ? "You haven't connected with any artists yet." : 'No artists in My Artists yet.';
     const copy = account?.role === 'Fan' ? 'Follow an artist from their board to see posts here.' : 'My Artists is a private list available to Fan accounts.';
     content = `${renderEmpty(title, copy)}${account?.role === 'Fan' ? `<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artist boards ${icon('arrow', 14)}</a></div>` : ''}`;
   } else {
@@ -826,7 +824,7 @@ function renderArtists() {
       ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.followStatus.message)}</p>`
       : '';
     if (!boards.length) {
-      return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">A private list of artists you choose to follow.</p>${status}${renderEmpty("You haven't added any artists to My Artists yet.", 'Visit an artist board to add them here.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artist boards ${icon('arrow', 14)}</a></div></section>`;
+      return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">A private list of artists you choose to follow.</p>${status}${renderEmpty("You haven't connected with any artists yet.", 'Visit an artist board to add them here.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artist boards ${icon('arrow', 14)}</a></div></section>`;
     }
     return `<section><p class="eyebrow">The rooms you return to</p><h1 class="page-title">My Artists</h1><p class="page-subtitle">A private list of artists you choose to follow.</p>${status}<div class="followed-board-list">${boards.map(renderFollowedBoard).join('')}</div></section>`;
   }
@@ -2370,12 +2368,9 @@ app?.addEventListener('click', (event) => {
   } else if (action === 'cancel-repost') {
     cancelRepost();
   } else if (action === 'open-search') {
-    state.searchOpen = true;
-    render();
-    app.querySelector('.search-wrap input')?.focus();
-  } else if (action === 'close-search') {
     state.searchOpen = false;
-    render();
+    navigate('/explore');
+    requestAnimationFrame(() => app.querySelector('[data-explore-search]')?.focus());
   } else if (action === 'edit-profile') {
     beginProfileEdit();
   } else if (action === 'remove-profile-image') {
