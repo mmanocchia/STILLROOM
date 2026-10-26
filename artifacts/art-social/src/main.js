@@ -327,7 +327,7 @@ function formatPostDate(timestamp) {
 }
 
 function brand(linked = true) {
-  const contents = `<span class="brand-mark" aria-hidden="true"></span><span class="brand-name">stillroom</span>`;
+  const contents = `<span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><path d="M20 3.8 36.2 13.2v13.6L20 36.2 3.8 26.8V13.2L20 3.8Z" stroke="currentColor" stroke-width="1.5"/><path d="M12.1 12.2h15.8v15.6H12.1z" fill="currentColor" fill-opacity=".12" stroke="currentColor" stroke-width="1.4"/><path d="m12.2 27.8 15.6-15.6M20 12.2v15.6" stroke="currentColor" stroke-width="1.4"/></svg></span><span class="brand-name">stillroom</span>`;
   return linked
     ? `<a class="brand" href="${hrefFor('/')}" data-route="/" data-testid="link-brand" aria-label="Stillroom home">${contents}</a>`
     : `<span class="brand" aria-label="Stillroom">${contents}</span>`;
@@ -463,28 +463,19 @@ function navLink(item, currentRoute) {
 }
 
 function renderShell(content, pageTitle) {
-  const account = activeAccount();
-  const initials = escapeHTML((account?.name?.trim()[0] || account?.username?.[0] || 'S').toUpperCase());
   const nav = navItems.map((item) => navLink(item, state.route)).join('');
-  const currentName = escapeHTML(account?.name || '');
-  const currentUser = escapeHTML(account?.username || '');
-  const currentProfileRoute = account ? `/profile/${encodeURIComponent(account.id)}` : '/profile';
   const searchControl = `<button class="icon-button" type="button" data-action="open-search" aria-label="Search artists, boards, and posts">${icon('search', 17)}<span class="search-label">Search</span></button>`;
   return `<div class="paper-grain app-shell">
-    <aside class="sidebar">
-      <div class="sidebar-brand">${brand()}</div>
-      <nav class="sidebar-nav" aria-label="Main navigation">${nav}</nav>
-      <div class="sidebar-bottom">
-        <div class="sidebar-note"><p class="eyebrow">A note to keep</p><h2 class="sidebar-note-title">Look a little longer.</h2><p class="sidebar-note-copy">There is no score to keep here. Just work worth returning to.</p></div>
-        <div class="sidebar-user"><span class="avatar-mark">${initials}</span><span><span class="sidebar-user-name">${currentName}</span><a class="sidebar-user-handle" href="${hrefFor(currentProfileRoute)}" data-route="${currentProfileRoute}">@${currentUser} · ${escapeHTML(account?.role || '')}</a></span></div>
-      </div>
-    </aside>
+    <header class="app-topnav">
+      <div class="app-topnav-brand">${brand()}</div>
+      <nav class="main-nav" aria-label="Main navigation">${nav}</nav>
+      <div class="app-nav-actions">${searchControl}<a class="icon-button profile-shortcut" href="${hrefFor('/profile')}" data-route="/profile" aria-label="Open profile">${icon('profile', 17)}</a><button class="logout-button" type="button" data-action="logout" aria-label="Log out">${icon('logout', 15)}<span>Log out</span></button></div>
+    </header>
     <div class="app-main">
-      <header class="topbar"><span class="topbar-title">${escapeHTML(pageTitle)}</span><div class="topbar-actions">${searchControl}<a class="icon-button" href="${hrefFor('/profile')}" data-route="/profile" aria-label="Open profile">${icon('profile', 17)}</a><button class="logout-button" type="button" data-action="logout" aria-label="Log out">${icon('logout', 15)}<span>Log out</span></button></div></header>
+      <header class="topbar"><span class="topbar-title">${escapeHTML(pageTitle)}</span></header>
       <main class="page-content page-enter">${content}</main>
     </div>
     ${renderShelfPicker()}
-    <nav class="mobile-nav" aria-label="Main navigation">${nav}</nav>
   </div>`;
 }
 
