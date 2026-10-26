@@ -11,6 +11,6 @@ Explore must search existing Artist accounts, boards, and original Fan posts tog
 
 **Why:** The user explicitly requested searchable, combined Explore filters and recent-first results without likes, follower counts, or popularity ranking.
 
-**Why:** Fan posts and comments retain username snapshots; changing a handle without updating those records would leave stale public attributions.
+**Why:** Fan posts and comments retain username snapshots. The user wants renames without changing ownership, so account IDs must remain stable and snapshots must not go stale.
 
-**How to apply:** Implement new product behavior in frontend state, store reposts as links to original posts, keep Fan follows and Shelves account-scoped, show only public Shelves on profiles, keep empty states truthful, and do not seed users, artists, boards, Shelves, posts, reposts, or comments. Keep Explore ordering based on creation/publication time, never popularity. Keep usernames stable unless all visible snapshots and links are updated together.
+**How to apply:** Implement new product behavior in frontend state, store reposts as links to original posts, keep Fan follows and Shelves account-scoped, show only public Shelves on profiles, keep empty states truthful, and do not seed users, artists, boards, Shelves, posts, reposts, or comments. Keep Explore ordering based on creation/publication time, never popularity. Treat account IDs as the identity reference; when a username changes, update every username snapshot and keep links resolved by account ID in the same mutation.

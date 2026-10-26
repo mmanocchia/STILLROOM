@@ -43,6 +43,13 @@ const state = {
   profileTimer: null,
   profileStatus: null,
   profileActivityTabs: {},
+  usernameEditorOpen: false,
+  usernameDraft: '',
+  usernameError: '',
+  usernameLoading: false,
+  usernamePending: null,
+  usernameTimer: null,
+  usernameStatus: null,
   exploreQuery: '',
   exploreDiscipline: 'all',
   exploreLoading: false,
@@ -869,15 +876,15 @@ function renderBoardForm(mode) {
   }
   const draft = state.boardDraft;
   const editing = mode === 'edit';
-  const disabled = state.boardLoading ? 'disabled' : '';
-  const saveDisabled = state.boardLoading || state.boardImageLoading ? 'disabled' : '';
+  const disabled = state.boardLoading || state.usernameLoading ? 'disabled' : '';
+  const saveDisabled = state.boardLoading || state.boardImageLoading || state.usernameLoading ? 'disabled' : '';
   const imagePreview = draft.profileImage
     ? `<div class="board-image-preview"><img src="${escapeHTML(draft.profileImage)}" alt="Selected profile image"><div><p class="preview-title">Profile image selected</p><button class="text-button" type="button" data-action="remove-board-image">Remove image</button></div></div>`
     : '';
   return `<section><p class="eyebrow">${editing ? 'Your artist space' : 'Make it yours'}</p><h1 class="page-title">${editing ? 'Edit your board' : 'Create your board'}</h1><p class="page-subtitle">Your board is a quiet introduction. It starts empty, with no posts.</p>
     <div class="board-form-card">
       ${state.boardErrors.form ? `<p class="inline-error" role="alert">${escapeHTML(state.boardErrors.form)}</p>` : ''}
-      <form data-form="board" data-mode="${mode}" novalidate ${state.boardLoading || state.boardImageLoading ? 'aria-busy="true"' : ''}>
+      <form data-form="board" data-mode="${mode}" novalidate ${state.boardLoading || state.boardImageLoading || state.usernameLoading ? 'aria-busy="true"' : ''}>
         <label class="field-label">Artist name<input class="field-input" name="artistName" value="${escapeHTML(draft.artistName)}" placeholder="The name fans will see" aria-invalid="${Boolean(state.boardErrors.artistName)}" ${state.boardErrors.artistName ? 'aria-describedby="board-error-artistName"' : ''} ${disabled} required>${boardFieldError('artistName')}</label>
         <label class="field-label">Artistic discipline<input class="field-input" name="discipline" value="${escapeHTML(draft.discipline)}" placeholder="Music, film, photography…" aria-invalid="${Boolean(state.boardErrors.discipline)}" ${state.boardErrors.discipline ? 'aria-describedby="board-error-discipline"' : ''} ${disabled} required>${boardFieldError('discipline')}</label>
         <label class="field-label">Biography<textarea class="field-input field-textarea" name="biography" rows="5" maxlength="800" placeholder="A few words about your practice and work" aria-invalid="${Boolean(state.boardErrors.biography)}" ${state.boardErrors.biography ? 'aria-describedby="board-error-biography"' : ''} ${disabled} required>${escapeHTML(draft.biography)}</textarea>${boardFieldError('biography')}</label>
@@ -888,6 +895,7 @@ function renderBoardForm(mode) {
         <div class="board-form-footer"><button class="primary-button" type="submit" ${saveDisabled} data-testid="button-save-board">${state.boardLoading ? `<span class="registration-loading"><span class="loading-dot"></span>${editing ? 'Saving…' : 'Creating…'}</span>` : state.boardImageLoading ? 'Preparing image…' : `${editing ? 'Save changes' : 'Create board'} ${icon('arrow', 14)}`}</button><button class="quiet-button" type="button" data-action="cancel-board-form" ${disabled}>Cancel</button></div>
       </form>
     </div>
+    ${editing ? renderUsernameChange(account) : ''}
   </section>`;
 }
 
@@ -1243,17 +1251,16 @@ function renderFanProfileForm(profile) {
     biography: profile.biography || '',
     profileImage: profile.profileImage || '',
   };
-  const disabled = state.profileLoading || state.profileImageLoading ? 'disabled' : '';
+  const disabled = state.profileLoading || state.profileImageLoading || state.usernameLoading ? 'disabled' : '';
   const nameError = state.profileFieldErrors.name || '';
   const biographyError = state.profileFieldErrors.biography || '';
   const preview = draft.profileImage
     ? `<div class="profile-image-preview"><img src="${escapeHTML(draft.profileImage)}" alt="Profile image preview"><div><p class="preview-title">Profile image selected</p><button class="text-button text-danger" type="button" data-action="remove-profile-image" ${disabled}>Remove image</button></div></div>`
     : '';
-  return `<form class="profile-form" data-form="profile" novalidate ${state.profileLoading || state.profileImageLoading ? 'aria-busy="true"' : ''}>
+  return `<form class="profile-form" data-form="profile" novalidate ${state.profileLoading || state.profileImageLoading || state.usernameLoading ? 'aria-busy="true"' : ''}>
     ${state.profileError ? `<p class="inline-error" role="alert">${escapeHTML(state.profileError)}</p>` : ''}
     <label class="field-label">Display name<input class="field-input" name="profileName" value="${escapeHTML(draft.name)}" maxlength="80" placeholder="Your name" aria-invalid="${Boolean(nameError)}" ${nameError ? 'aria-describedby="profile-name-error"' : ''} ${disabled} required></label>
     ${nameError ? `<p class="inline-error" id="profile-name-error" role="alert">${escapeHTML(nameError)}</p>` : ''}
-    <label class="field-label">Username<input class="field-input profile-username-readonly" value="@${escapeHTML(profile.username)}" aria-label="Username" disabled><span class="field-hint">Your username stays the same so existing post and comment links continue to work.</span></label>
     <label class="field-label">Biography <span class="optional-label">(optional)</span><textarea class="field-input field-textarea" name="profileBiography" rows="4" maxlength="500" placeholder="A few words about you" aria-invalid="${Boolean(biographyError)}" ${biographyError ? 'aria-describedby="profile-biography-error"' : ''} ${disabled}>${escapeHTML(draft.biography)}</textarea></label>
     ${biographyError ? `<p class="inline-error" id="profile-biography-error" role="alert">${escapeHTML(biographyError)}</p>` : ''}
     <label class="field-label">Profile image <span class="optional-label">(optional)</span><input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" data-profile-image ${disabled}><span class="field-hint">PNG, JPG, or WebP. Maximum 4 MB.</span></label>
@@ -1262,6 +1269,31 @@ function renderFanProfileForm(profile) {
     ${preview}
     <div class="profile-form-actions"><button class="primary-button" type="submit" ${disabled}>${state.profileLoading ? `<span class="registration-loading"><span class="loading-dot"></span>Saving…</span>` : 'Save profile'}</button><button class="quiet-button" type="button" data-action="cancel-profile-edit" ${disabled}>Cancel</button></div>
   </form>`;
+}
+
+function renderUsernameChange(profile) {
+  const success = state.usernameStatus?.userId === profile.id
+    ? `<p class="success-banner username-success" role="status">${icon('check', 14)}${escapeHTML(state.usernameStatus.message)}</p>`
+    : '';
+  if (!state.usernameEditorOpen) {
+    return `<section class="username-change-section">
+      <div><p class="eyebrow">Username</p><p class="username-current">@${escapeHTML(profile.username)}</p></div>
+      <button class="quiet-button" type="button" data-action="open-username-editor">Change Username</button>
+      ${success}
+    </section>`;
+  }
+  const error = state.usernameError;
+  const disabled = state.usernameLoading ? 'disabled' : '';
+  return `<section class="username-change-section username-change-open">
+    <h2 class="section-heading">Change Username</h2>
+    ${success}
+    <form class="username-change-form" data-form="username" data-user-id="${escapeHTML(profile.id)}" novalidate ${state.usernameLoading ? 'aria-busy="true"' : ''}>
+      <label class="field-label">New username<input class="field-input" name="newUsername" value="${escapeHTML(state.usernameDraft)}" autocomplete="username" placeholder="Choose a username" aria-invalid="${Boolean(error)}" ${error ? 'aria-describedby="username-change-error"' : ''} ${disabled} required></label>
+      ${error ? `<p class="inline-error" id="username-change-error" role="alert">${escapeHTML(error)}</p>` : ''}
+      <p class="field-hint">Usernames must be unique. Your existing posts and comments will display your new username.</p>
+      <div class="profile-form-actions"><button class="primary-button" type="submit" ${disabled}>${state.usernameLoading ? `<span class="registration-loading"><span class="loading-dot"></span>Saving…</span>` : 'Save Changes'}</button><button class="quiet-button" type="button" data-action="cancel-username-editor" ${disabled}>Cancel</button></div>
+    </form>
+  </section>`;
 }
 
 function renderFanActivity(profile) {
@@ -1285,7 +1317,7 @@ function renderFanProfileContent(profile, isOwner) {
     <div class="profile-card-head">${renderProfileAvatar(profile.profileImage || '', profile.name, profile.username, true)}<div><h2 class="profile-name">${escapeHTML(profile.name)}</h2>${renderProfileHandle(profile)}</div></div>
     <span class="role-pill">Fan</span>
     ${renderProfileStatus(profile.id)}
-    ${editing ? renderFanProfileForm(profile) : `<div class="profile-bio">${profile.biography ? escapeHTML(profile.biography) : `<span class="profile-bio-empty">${isOwner ? 'Add a short biography to introduce yourself.' : 'No biography yet.'}</span>`}</div>${isOwner ? `<button class="quiet-button profile-edit" type="button" data-action="edit-profile">Edit Profile</button>` : ''}`}
+    ${editing ? `${renderFanProfileForm(profile)}${renderUsernameChange(profile)}` : `<div class="profile-bio">${profile.biography ? escapeHTML(profile.biography) : `<span class="profile-bio-empty">${isOwner ? 'Add a short biography to introduce yourself.' : 'No biography yet.'}</span>`}</div>${isOwner ? `<button class="quiet-button profile-edit" type="button" data-action="edit-profile">Edit Profile</button>` : ''}`}
   </div>
   ${renderPublicShelves(profile.id)}
   ${renderFanActivity(profile)}`;
@@ -1303,9 +1335,10 @@ function renderArtistProfileContent(profile, isOwner) {
     <div class="profile-card-head">${renderProfileAvatar(image, name, profile.username, true)}<div><span class="board-card-discipline">${board ? escapeHTML(board.discipline) : 'Artist'}</span><h2 class="profile-name">${escapeHTML(name)}</h2>${renderProfileHandle(profile)}</div></div>
     ${board?.biography ? `<p class="profile-bio">${escapeHTML(board.biography)}</p>` : ''}
     ${renderProfileStatus(profile.id)}
-    <div class="artist-profile-actions">${board ? `<a class="quiet-button" href="${hrefFor(boardRoute)}" data-route="${boardRoute}">View Artist Board ${icon('arrow', 14)}</a>` : isOwner ? `<p class="profile-bio-empty">Your Artist profile is empty until you create a board.</p><button class="primary-button" type="button" data-action="create-board">Create your Artist Board ${icon('arrow', 14)}</button>` : `<p class="profile-bio-empty">This Artist hasn’t created a board yet.</p>`}
+    <div class="artist-profile-actions">${board ? `<a class="quiet-button" href="${hrefFor(boardRoute)}" data-route="${boardRoute}">View Artist Board ${icon('arrow', 14)}</a>` : isOwner ? `<p class="profile-bio-empty">Your Artist profile is empty until you create a board.</p><button class="primary-button" type="button" data-action="create-board" ${state.usernameLoading ? 'disabled' : ''}>Create your Artist Board ${icon('arrow', 14)}</button>` : `<p class="profile-bio-empty">This Artist hasn’t created a board yet.</p>`}
       ${isOwner && board ? `<button class="quiet-button" type="button" data-action="edit-profile">${icon('edit', 14)} Edit Profile</button>` : ''}
     </div>
+    ${isOwner && !board ? renderUsernameChange(profile) : ''}
   </div>
   ${renderPublicShelves(profile.id)}
   <section class="profile-board-section"><h2 class="section-heading">Fan Posts</h2>${posts.length ? `<div class="post-list">${posts.map((post) => renderPostCard(post)).join('')}</div>` : renderEmpty('No Fan posts yet.', board ? 'Fan posts on this Artist Board will appear here.' : 'Create an Artist Board to give Fans a place to share.')}</section>`;
@@ -1316,7 +1349,7 @@ function renderProfileSwitcher(account) {
   return `<section class="switcher-section" aria-labelledby="switcher-title">
     <div class="switcher-heading"><h2 class="switcher-title" id="switcher-title">Accounts in this tab</h2><span class="switcher-caption">Switch between registered accounts</span></div>
     <div class="switcher-list">${switcher}</div>
-    <div class="switcher-footer"><button class="outline-button" type="button" data-action="add-account">${icon('plus', 15)} Register another account</button></div>
+    <div class="switcher-footer"><button class="outline-button" type="button" data-action="add-account" ${state.usernameLoading ? 'disabled' : ''}>${icon('plus', 15)} Register another account</button></div>
     <p class="form-note">Accounts are held in page memory only. They disappear when you refresh.</p>
   </section>`;
 }
@@ -1353,6 +1386,10 @@ function beginProfileEdit() {
     beginBoardForm(boardForOwner(account.id) ? 'edit' : 'create');
     return;
   }
+  state.usernameEditorOpen = false;
+  state.usernameDraft = '';
+  state.usernameError = '';
+  state.usernameStatus = null;
   state.profileDraft = {
     name: account.name || '',
     biography: account.biography || '',
@@ -1370,7 +1407,7 @@ function beginProfileEdit() {
 }
 
 function cancelProfileEdit() {
-  if (state.profileLoading) return;
+  if (state.profileLoading || state.usernameLoading) return;
   state.profileDraft = null;
   state.profileError = '';
   state.profileFieldErrors = {};
@@ -1378,6 +1415,9 @@ function cancelProfileEdit() {
   state.profileImageLoading = false;
   state.profileImageToken += 1;
   state.editingProfile = false;
+  state.usernameEditorOpen = false;
+  state.usernameDraft = '';
+  state.usernameError = '';
   render();
 }
 
@@ -1388,9 +1428,103 @@ function cancelProfileOperation() {
   state.profileLoading = false;
 }
 
+function resetUsernameEditor() {
+  if (state.usernameTimer) window.clearTimeout(state.usernameTimer);
+  state.usernameTimer = null;
+  state.usernamePending = null;
+  state.usernameLoading = false;
+  state.usernameEditorOpen = false;
+  state.usernameDraft = '';
+  state.usernameError = '';
+  state.usernameStatus = null;
+}
+
+function beginUsernameEdit() {
+  const account = activeAccount();
+  if (!account || state.usernameLoading) return;
+  state.usernameEditorOpen = true;
+  state.usernameDraft = account.username;
+  state.usernameError = '';
+  state.usernameStatus = null;
+  render();
+  app.querySelector('[name="newUsername"]')?.focus();
+}
+
+function cancelUsernameEdit() {
+  if (state.usernameLoading) return;
+  state.usernameEditorOpen = false;
+  state.usernameDraft = '';
+  state.usernameError = '';
+  state.usernameStatus = null;
+  render();
+}
+
+function submitUsernameChange(form) {
+  const account = activeAccount();
+  if (!account || !['Fan', 'Artist'].includes(account.role)
+    || form.dataset.userId !== account.id || !state.usernameEditorOpen || state.usernameLoading) return;
+
+  const username = String(new FormData(form).get('newUsername') || '').trim().replace(/^@/, '');
+  let error = '';
+  if (!username) error = 'Choose a username.';
+  else if (state.accounts.some((entry) => entry.id !== account.id && entry.username.toLocaleLowerCase() === username.toLocaleLowerCase())) {
+    error = 'That username is already in use.';
+  }
+  state.usernameDraft = username;
+  state.usernameError = error;
+  state.usernameStatus = null;
+  if (error) {
+    render();
+    app.querySelector('[name="newUsername"]')?.focus();
+    return;
+  }
+
+  state.usernamePending = { userId: account.id, username };
+  state.usernameLoading = true;
+  render();
+  state.usernameTimer = window.setTimeout(() => {
+    const pending = state.usernamePending;
+    const profile = pending && state.accounts.find((entry) => entry.id === pending.userId);
+    if (!pending || !profile || activeAccount()?.id !== pending.userId) {
+      resetUsernameEditor();
+      render();
+      return;
+    }
+    const duplicate = state.accounts.some((entry) => entry.id !== profile.id
+      && entry.username.toLocaleLowerCase() === pending.username.toLocaleLowerCase());
+    if (duplicate) {
+      state.usernameError = 'That username is already in use.';
+      state.usernameLoading = false;
+      state.usernamePending = null;
+      state.usernameTimer = null;
+      render();
+      return;
+    }
+
+    profile.username = pending.username;
+    if (state.pendingPost?.authorId === profile.id && state.pendingPost.post) {
+      state.pendingPost.post.authorUsername = pending.username;
+    }
+    for (const post of state.posts) {
+      if (post.authorId === profile.id) post.authorUsername = pending.username;
+    }
+    for (const comment of state.comments) {
+      if (comment.authorId === profile.id) comment.authorUsername = pending.username;
+    }
+    state.usernameEditorOpen = false;
+    state.usernameDraft = '';
+    state.usernameError = '';
+    state.usernameStatus = { userId: profile.id, message: 'Your username has been updated.' };
+    state.usernamePending = null;
+    state.usernameTimer = null;
+    state.usernameLoading = false;
+    render();
+  }, 240);
+}
+
 function submitProfile(form) {
   const account = activeAccount();
-  if (!account || account.role !== 'Fan' || !state.editingProfile || state.profileLoading) return;
+  if (!account || account.role !== 'Fan' || !state.editingProfile || state.profileLoading || state.usernameLoading) return;
   const formData = new FormData(form);
   const name = String(formData.get('profileName') || '').trim();
   const biography = String(formData.get('profileBiography') || '').trim();
@@ -2137,6 +2271,15 @@ app?.addEventListener('input', (event) => {
     }
     state.profileError = '';
   }
+  if (target instanceof HTMLInputElement && target.name === 'newUsername' && state.usernameEditorOpen) {
+    state.usernameDraft = target.value;
+    if (state.usernameError) {
+      state.usernameError = '';
+      target.removeAttribute('aria-invalid');
+      target.removeAttribute('aria-describedby');
+      app.querySelector('#username-change-error')?.remove();
+    }
+  }
   if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)
     && target.closest('form[data-form="shelf"]')
     && ['title', 'description', 'visibility'].includes(target.name)) {
@@ -2262,12 +2405,13 @@ app?.addEventListener('submit', (event) => {
   if (!(form instanceof HTMLFormElement)) return;
   event.preventDefault();
   if (form.dataset.form === 'registration' && !state.loading) submitRegistration(form);
-  else if (form.dataset.form === 'board' && !state.boardLoading) submitBoard(form);
+  else if (form.dataset.form === 'board' && !state.boardLoading && !state.usernameLoading) submitBoard(form);
   else if (form.dataset.form === 'post' && !state.postPublishing) submitPost(form);
   else if (form.dataset.form === 'shelf' && !state.shelfLoading) submitShelfForm(form);
   else if (form.dataset.form === 'shelf-picker' && !state.shelfLoading) submitShelfPicker(form);
   else if (form.dataset.form === 'comment' && !state.commentPending) submitComment(form);
   else if (form.dataset.form === 'profile' && !state.profileLoading && !state.profileImageLoading) submitProfile(form);
+  else if (form.dataset.form === 'username' && !state.usernameLoading) submitUsernameChange(form);
 });
 
 app?.addEventListener('click', (event) => {
@@ -2292,6 +2436,7 @@ app?.addEventListener('click', (event) => {
   } else if (action === 'open-profile') navigate('/profile', { replace: true });
   else if (action === 'switch-account') {
     cancelProfileOperation();
+    resetUsernameEditor();
     state.profileDraft = null;
     state.profileError = '';
     state.profileFieldErrors = {};
@@ -2319,6 +2464,7 @@ app?.addEventListener('click', (event) => {
     navigate('/profile');
   } else if (action === 'logout') {
     cancelProfileOperation();
+    resetUsernameEditor();
     state.profileDraft = null;
     state.profileError = '';
     state.profileFieldErrors = {};
@@ -2373,6 +2519,10 @@ app?.addEventListener('click', (event) => {
     requestAnimationFrame(() => app.querySelector('[data-explore-search]')?.focus());
   } else if (action === 'edit-profile') {
     beginProfileEdit();
+  } else if (action === 'open-username-editor') {
+    beginUsernameEdit();
+  } else if (action === 'cancel-username-editor') {
+    cancelUsernameEdit();
   } else if (action === 'remove-profile-image') {
     if (state.editingProfile && !state.profileLoading && state.profileDraft) {
       state.profileDraft = { ...state.profileDraft, profileImage: '' };
@@ -2439,12 +2589,14 @@ app?.addEventListener('click', (event) => {
   } else if (action === 'toggle-artist-follow') {
     toggleArtistFollow(target.dataset.boardId);
   } else if (action === 'cancel-board-form') {
-    state.boardDraft = null;
-    state.boardErrors = {};
-    state.boardImageError = '';
-    state.boardImageLoading = false;
-    state.boardImageReadToken += 1;
-    navigate('/artists');
+    if (!state.usernameLoading) {
+      state.boardDraft = null;
+      state.boardErrors = {};
+      state.boardImageError = '';
+      state.boardImageLoading = false;
+      state.boardImageReadToken += 1;
+      navigate('/artists');
+    }
   } else if (action === 'remove-board-image') {
     state.boardDraft = { ...(state.boardDraft || {}), profileImage: '' };
     state.boardImageError = '';

@@ -566,7 +566,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .profile-success { margin-top: 16px; }
 .profile-form { max-width: 620px; margin-top: 20px; }
 .profile-form .field-label { margin-top: 14px; }
-.profile-username-readonly { color: var(--muted); opacity: .8; }
+.username-change-section { max-width: 620px; margin-top: 22px; padding: 18px 0 2px; border-top: 1px solid var(--line); }
+.username-change-section:not(.username-change-open) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.username-current { margin: 5px 0 0; color: var(--muted); font: 11px 'DM Mono', monospace; }
+.username-change-open .section-heading { margin: 0 0 13px; }
+.username-change-form .field-label { margin-top: 0; }
+.username-success { flex-basis: 100%; margin-top: 0; }
 .profile-image-preview { display: flex; align-items: center; gap: 13px; margin-top: 14px; padding: 12px; border: 1px solid var(--line); }
 .profile-image-preview img { width: 58px; height: 58px; border: 1px solid var(--line); border-radius: 50%; object-fit: cover; }
 .profile-form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
