@@ -1323,3 +1323,38 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .shelf-preview-cover,
   .my-space-shelf-cover { aspect-ratio: 1.5; }
 }
+
+/* Separate visitor entry points for each account type. */
+.app-topnav { grid-template-columns: minmax(150px, 1fr) auto minmax(300px, 1fr); }
+.visitor-join-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.join-nav-button {
+  min-height: 38px;
+  gap: 6px;
+  padding: 0 11px;
+  font-size: 9px;
+}
+.join-nav-artist-button {
+  border: 1px solid #258f89;
+  background: #fff;
+  color: #19736f;
+}
+.join-nav-artist-button:hover {
+  border-color: #19736f;
+  background: #f3fbfa;
+  color: #19736f;
+}
+@media (max-width: 900px) {
+  .app-topnav { grid-template-columns: auto 1fr auto; }
+}
+@media (max-width: 760px) {
+  .visitor-join-actions { gap: 5px; }
+  .join-nav-button { min-height: 32px; padding: 0 8px; font-size: 8px; }
+}
+@media (max-width: 360px) {
+  .visitor-join-actions { gap: 3px; }
+  .join-nav-button { min-height: 30px; gap: 3px; padding: 0 6px; font-size: 7px; }
+}

@@ -469,7 +469,10 @@ function renderShell(content, pageTitle) {
   const searchControl = `<button class="icon-button" type="button" data-action="open-search" aria-label="Search artists, boards, and posts">${icon('search', 17)}<span class="search-label">Search</span></button>`;
   const accountControls = account
     ? `<a class="icon-button profile-shortcut" href="${hrefFor('/profile')}" data-route="/profile" aria-label="Open profile">${icon('profile', 17)}<span class="account-handle">@${escapeHTML(account.username)}</span></a><button class="logout-button" type="button" data-action="logout" aria-label="Log out">${icon('logout', 15)}<span>Log out</span></button>`
-    : `<button class="primary-button join-nav-button" type="button" data-action="join"><span>Join / Sign Up</span>${icon('arrow', 14)}</button>`;
+    : `<div class="visitor-join-actions" aria-label="Join Stillroom">
+        <button class="primary-button join-nav-button" type="button" data-action="join" data-role="Fan">Join as a Fan</button>
+        <button class="outline-button join-nav-button join-nav-artist-button" type="button" data-action="join" data-role="Artist">Join as an Artist</button>
+      </div>`;
   return `<div class="paper-grain app-shell">
     <header class="app-topnav">
       <div class="app-topnav-brand">${brand()}</div>
