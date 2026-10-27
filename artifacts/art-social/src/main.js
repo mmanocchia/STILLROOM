@@ -832,7 +832,7 @@ function renderExplore() {
   return `<section><p class="eyebrow">Find your next room</p><h1 class="page-title">Explore</h1><p class="page-subtitle">Search artists, boards, and Fan posts by name, username, title, or keywords.</p>
     <div class="explore-controls">
       <label class="explore-search">${icon('search', 16)}<input type="search" data-explore-search aria-label="Search artists, boards, and posts" placeholder="Search names, titles, or keywords" value="${escapeHTML(state.exploreQuery)}"><button class="icon-button" type="button" data-action="clear-explore-search" aria-label="Clear search" ${state.exploreQuery ? '' : 'hidden'}>${icon('close', 15)}</button></label>
-      <label class="explore-discipline-label"><span class="eyebrow">Discipline</span><select class="explore-discipline" data-explore-discipline aria-label="Filter by discipline">${disciplines.map((discipline) => `<option value="${discipline === 'all' ? 'all' : escapeHTML(discipline)}" ${state.exploreDiscipline === (discipline === 'all' ? 'all' : discipline) ? 'selected' : ''}>${discipline === 'all' ? 'All disciplines' : escapeHTML(discipline)}</option>`).join('')}</select></label>
+      <label class="explore-discipline-label"><span class="eyebrow">Categories</span><select class="explore-discipline" data-explore-discipline aria-label="Filter by categories">${disciplines.map((discipline) => `<option value="${discipline === 'all' ? 'all' : escapeHTML(discipline)}" ${state.exploreDiscipline === (discipline === 'all' ? 'all' : discipline) ? 'selected' : ''}>${discipline === 'all' ? 'All Categories' : escapeHTML(discipline)}</option>`).join('')}</select></label>
     </div>
     <div id="explore-results" aria-live="polite">${renderExploreResults()}</div>
   </section>`;

@@ -348,6 +348,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .explore-search [hidden] { display: none; }
 .explore-controls { display: flex; max-width: 780px; align-items: end; gap: 12px; margin-top: 27px; }
 .explore-discipline-label { display: grid; min-width: 170px; gap: 6px; }
+.explore-discipline-label .eyebrow { text-transform: none; letter-spacing: .04em; }
 .explore-discipline { width: 100%; height: 44px; padding: 0 32px 0 12px; border: 1px solid var(--line-dark); border-radius: 0; background: var(--paper); color: var(--ink); font-size: 11px; }
 .explore-result-count { margin: 24px 0 0; color: var(--faint); font: 600 10px 'Inter', sans-serif; letter-spacing: .08em; text-transform: uppercase; }
 .explore-result-section { margin-top: 25px; }
