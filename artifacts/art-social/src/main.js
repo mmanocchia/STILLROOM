@@ -548,7 +548,7 @@ function renderHome() {
   if (items.length) {
     content = `<div class="post-list home-feed">${items.map(renderFeedItem).join('')}</div>`;
   } else if (selected) {
-    content = `${renderEmpty('Nothing here yet. Discover artists and start collecting.')}<div class="home-empty-explore"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore Artists ${icon('arrow', 14)}</a></div>`;
+    content = `${renderEmpty('Artists make the space. Fans fill it with stories.')}<div class="home-empty-explore"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore Artists ${icon('arrow', 14)}</a></div>`;
   } else if (!account) {
     content = `${renderEmpty('Join to make this feed yours.', 'Your My Artists feed is private to your account.')}<div class="empty-action"><button class="quiet-button" type="button" data-action="join" data-role="Fan">Join as Fan ${icon('arrow', 14)}</button></div>`;
   } else if (!hasFollowedArtists) {
