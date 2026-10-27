@@ -1153,3 +1153,173 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .join-nav-button { gap: 4px; padding: 0 7px; font-size: 8px; }
   .app-nav-actions { gap: 1px; }
 }
+
+/* My Space collection cards */
+.visitor-my-space { max-width: 1080px; margin: 0 auto; }
+.shelf-preview-note { margin: 19px 0 0; color: #819397; font-size: 11px; line-height: 1.6; }
+.shelf-preview-grid,
+.my-space-shelf-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 23px;
+}
+.shelf-preview-card,
+.my-space-shelf-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dce9e9;
+  border-radius: 14px;
+  background: #fff;
+  color: #263437;
+}
+.my-space-shelf-card {
+  display: block;
+  text-decoration: none;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.my-space-shelf-card:hover {
+  transform: translateY(-2px);
+  border-color: #a9d1d0;
+  box-shadow: 0 10px 24px rgba(42, 86, 88, .07);
+}
+.shelf-preview-cover,
+.my-space-shelf-cover {
+  display: grid;
+  aspect-ratio: 1.22;
+  place-items: center;
+  border-bottom: 1px solid #e3eeee;
+  background:
+    radial-gradient(circle at 73% 27%, rgba(143, 211, 207, .2), transparent 31%),
+    linear-gradient(145deg, #f7fcfb, #eef8f8 58%, #f4f9fd);
+}
+.my-space-shelf-cover { color: #258f89; }
+.shelf-preview-art {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 1px solid rgba(37, 143, 137, .2);
+  border-radius: 50%;
+  color: #5caeaa;
+  background: rgba(255, 255, 255, .72);
+}
+.shelf-preview-caption,
+.my-space-shelf-info {
+  display: grid;
+  gap: 8px;
+  padding: 15px 16px 17px;
+}
+.shelf-preview-title,
+.my-space-shelf-title {
+  overflow: hidden;
+  font: 500 19px/1.2 'Playfair Display', Georgia, serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shelf-preview-tag,
+.my-space-shelf-count,
+.my-space-shelf-description { color: #819397; font-size: 10px; line-height: 1.55; }
+.my-space-shelf-info .shelf-visibility { margin-bottom: 1px; }
+.my-space-shelf-description { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+
+/* Fan profile structure */
+.fan-profile-card { max-width: 850px; padding: 25px 0 0; border-bottom: 0; }
+.fan-profile-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.fan-profile-header .profile-card-head { gap: 22px; }
+.fan-profile-header .profile-avatar-large { width: 108px; height: 108px; border-color: #c6e0df; background: #f5fbfa; color: #258f89; }
+.fan-profile-header .role-pill { margin-top: 11px; }
+.fan-profile-header .profile-edit { flex: 0 0 auto; margin: 0; }
+.profile-join-button { flex: 0 0 auto; min-height: 36px; padding: 0 12px; font-size: 10px; }
+.profile-about { margin-top: 28px; padding-top: 22px; border-top: 1px solid #e4eeee; }
+.profile-about .section-heading,
+.profile-interests h3 { margin: 0; color: #263437; font: 500 18px 'Playfair Display', Georgia, serif; }
+.profile-about .profile-bio { margin-top: 12px; }
+.profile-interests { margin-top: 19px; }
+.profile-interests h3 { font-size: 14px; }
+.profile-interests p { margin: 7px 0 0; color: #687b7f; font-size: 11px; line-height: 1.7; }
+.profile-interests .profile-bio-empty { margin-top: 0; }
+.profile-artists-section { max-width: 850px; margin-top: 31px; }
+.profile-artists-section .section-heading { margin-top: 0; }
+.profile-artist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
+  margin-top: 17px;
+}
+.profile-artist-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #dce9e9;
+  border-radius: 12px;
+  color: #263437;
+  background: #fff;
+  text-decoration: none;
+  transition: border-color .18s ease, transform .18s ease;
+}
+.profile-artist-card:hover { transform: translateY(-1px); border-color: #a9d1d0; }
+.profile-artist-avatar {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #d4e7e6;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.profile-artist-avatar-empty { color: #258f89; background: #f4fbfa; }
+.profile-artist-card-copy { display: grid; min-width: 0; flex: 1; gap: 4px; }
+.profile-artist-name { overflow: hidden; font: 500 14px 'Playfair Display', Georgia, serif; text-overflow: ellipsis; white-space: nowrap; }
+.profile-artist-discipline { color: #819397; font-size: 9px; }
+.profile-activity { max-width: 850px; }
+.profile-activity-heading { align-items: center; }
+.profile-activity-heading .section-heading { font-size: 20px; }
+.profile-tabs { gap: 22px; }
+.profile-tab { min-height: 40px; padding-bottom: 11px; color: #819397; font-size: 11px; }
+.profile-tab[aria-selected="true"] { color: #19736f; }
+.profile-tab[aria-selected="true"]::after { height: 2px; background: #258f89; }
+.profile-manage-shelves { display: inline-flex; align-items: center; gap: 5px; margin: 15px 0 2px; color: #258f89; font-size: 10px; text-decoration: none; }
+.profile-manage-shelves:hover { color: #19736f; text-decoration: underline; }
+.profile-shelf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 14px; margin-top: 18px; }
+.visitor-profile-card { padding-top: 25px; border-bottom: 1px solid #e4eeee; }
+.visitor-profile-avatar { color: #74b8b4; }
+.visitor-profile-activity { margin-top: 32px; }
+.visitor-profile-page .profile-artists-section .empty-state { min-height: 150px; }
+
+/* Subtle Explore consistency with the updated collection and profile surfaces. */
+.explore-search,
+.explore-discipline,
+.explore-artist-result,
+.explore-post-result { border-radius: 11px; }
+
+@media (max-width: 900px) {
+  .shelf-preview-grid,
+  .my-space-shelf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fan-profile-card { max-width: 100%; }
+}
+@media (max-width: 600px) {
+  .shelf-preview-grid,
+  .my-space-shelf-grid { gap: 11px; }
+  .shelf-preview-caption,
+  .my-space-shelf-info { gap: 7px; padding: 12px; }
+  .shelf-preview-title,
+  .my-space-shelf-title { font-size: 16px; }
+  .fan-profile-header { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .fan-profile-header .profile-card-head { align-items: center; gap: 15px; }
+  .fan-profile-header .profile-avatar-large { width: 76px; height: 76px; font-size: 26px; }
+  .fan-profile-header .profile-edit,
+  .profile-join-button { align-self: flex-start; }
+  .profile-activity-heading { align-items: flex-start; }
+  .profile-tabs { justify-content: space-between; gap: 10px; }
+}
+@media (max-width: 380px) {
+  .shelf-preview-grid,
+  .my-space-shelf-grid { grid-template-columns: 1fr; }
+  .shelf-preview-cover,
+  .my-space-shelf-cover { aspect-ratio: 1.5; }
+}
