@@ -2042,3 +2042,134 @@ input[type="radio"] { accent-color: var(--teal); }
   .join-nav-button { min-height: 29px; padding-right: 5px; padding-left: 5px; font-size: 7px; }
   .main-nav .nav-link { font-size: 8px; }
 }
+
+.shelf-preview-card {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid #DCE9E9;
+  border-radius: 14px;
+  background: #FFFFFF;
+  color: #152C35;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.shelf-preview-card:hover {
+  transform: translateY(-2px);
+  border-color: #B8DAD9;
+  box-shadow: 0 8px 20px rgba(21, 44, 53, .08);
+}
+.shelf-preview-card:focus-visible {
+  outline: 2px solid #147D85;
+  outline-offset: 3px;
+}
+.shelf-signup-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(21, 44, 53, .42);
+  backdrop-filter: blur(3px);
+}
+.shelf-signup-modal {
+  position: relative;
+  width: min(100%, 460px);
+  max-height: min(90vh, 700px);
+  overflow-y: auto;
+  padding: 32px 30px 28px;
+  border: 1px solid #DCE9E9;
+  border-radius: 18px;
+  background: #FFFFFF;
+  box-shadow: 0 26px 72px rgba(21, 44, 53, .2);
+  text-align: center;
+}
+.shelf-signup-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #DCE9E9;
+  border-radius: 50%;
+  background: #FFFFFF;
+  color: #50646A;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease;
+}
+.shelf-signup-close:hover {
+  border-color: #B8DAD9;
+  background: #F3FAFA;
+  color: #147D85;
+}
+.shelf-signup-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 16px;
+  place-items: center;
+  border: 1px solid #CBE8E6;
+  border-radius: 50%;
+  background: #EAF7F6;
+  color: #147D85;
+}
+.shelf-signup-title {
+  max-width: 360px;
+  margin: 0 auto;
+  color: #152C35;
+  font: 400 clamp(25px, 4vw, 30px)/1.14 'Anton', sans-serif;
+  letter-spacing: .01em;
+}
+.shelf-signup-description {
+  max-width: 360px;
+  margin: 12px auto 0;
+  color: #596E74;
+  font: 400 14px/1.65 'Inter', sans-serif;
+}
+.shelf-signup-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 24px;
+}
+.shelf-signup-actions button {
+  min-height: 44px;
+  justify-content: center;
+  border-radius: 9px;
+  font: 600 12px/1.2 'Inter', sans-serif;
+}
+.shelf-signup-actions .primary-button {
+  border-color: #147D85;
+  background: #147D85;
+  color: #FFFFFF;
+}
+.shelf-signup-actions .primary-button:hover {
+  border-color: #106A71;
+  background: #106A71;
+}
+.shelf-signup-actions .outline-button {
+  border: 1px solid #147D85;
+  background: #FFFFFF;
+  color: #147D85;
+}
+.shelf-signup-actions .outline-button:hover {
+  background: #F3FAFA;
+}
+body:has(.shelf-signup-backdrop) { overflow: hidden; }
+
+@media (max-width: 480px) {
+  .shelf-signup-backdrop { padding: 16px; }
+  .shelf-signup-modal { padding: 30px 20px 22px; border-radius: 16px; }
+  .shelf-signup-title { max-width: 300px; font-size: 26px; }
+  .shelf-signup-description { font-size: 13px; }
+  .shelf-signup-actions { grid-template-columns: 1fr; gap: 8px; margin-top: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shelf-preview-card,
+  .shelf-signup-close { transition: none; }
+}

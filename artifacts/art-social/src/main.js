@@ -99,6 +99,8 @@ const state = {
   shelfReturnRoute: null,
   shelfDeleteConfirmId: null,
   shelfStatus: null,
+  shelfSignupPromptOpen: false,
+  shelfSignupPromptFocusKey: '',
 };
 
 const iconPaths = {
@@ -143,6 +145,10 @@ function hrefFor(path) {
 }
 
 function navigate(path, { replace = false } = {}) {
+  if (path !== '/shelves') {
+    state.shelfSignupPromptOpen = false;
+    state.shelfSignupPromptFocusKey = '';
+  }
   if (state.loading && path !== state.route) cancelRegistration();
   if (state.boardLoading && path !== state.route) cancelBoardOperation();
   if (state.shelfLoading && path !== state.route) cancelShelfOperation();
@@ -483,6 +489,7 @@ function renderShell(content, pageTitle) {
       <header class="topbar"><span class="topbar-title">${escapeHTML(pageTitle)}</span></header>
       <main class="page-content page-enter">${content}</main>
     </div>
+    ${renderShelfSignupPrompt()}
     ${renderShelfPicker()}
   </div>`;
 }
@@ -520,6 +527,45 @@ function renderShelfPicker() {
       </form>` : `<div class="shelf-picker-empty">${renderEmpty('You haven’t created a Shelf yet.', 'Create one to save this post for later.') }<button class="primary-button" type="button" data-action="create-shelf-from-picker">Create a Shelf ${icon('arrow', 14)}</button></div>`}
     </section>
   </div>`;
+}
+
+function renderShelfSignupPrompt() {
+  if (!state.shelfSignupPromptOpen || state.route !== '/shelves' || activeAccount()) return '';
+  return `<div class="shelf-signup-backdrop">
+    <section class="shelf-signup-modal" role="dialog" aria-modal="true" aria-labelledby="shelf-signup-title" aria-describedby="shelf-signup-description">
+      <button class="shelf-signup-close" type="button" data-action="close-shelf-signup-prompt" data-testid="button-close-shelf-signup-prompt" aria-label="Close sign-up prompt">${icon('close', 18)}</button>
+      <span class="shelf-signup-icon" aria-hidden="true">${icon('shelves', 20)}</span>
+      <h2 class="shelf-signup-title" id="shelf-signup-title">Join Stillroom to create your first Shelf.</h2>
+      <p class="shelf-signup-description" id="shelf-signup-description">Start collecting the art, stories, and moments that inspire you.</p>
+      <div class="shelf-signup-actions">
+        <button class="primary-button" type="button" data-action="join-from-shelf-signup-prompt" data-role="Fan" data-testid="button-join-as-fan-from-shelf">Join as a Fan</button>
+        <button class="outline-button" type="button" data-action="join-from-shelf-signup-prompt" data-role="Artist" data-testid="button-join-as-artist-from-shelf">Join as an Artist</button>
+      </div>
+    </section>
+  </div>`;
+}
+
+function openShelfSignupPrompt(focusKey) {
+  if (activeAccount() || state.route !== '/shelves') return;
+  state.shelfSignupPromptFocusKey = focusKey;
+  state.shelfSignupPromptOpen = true;
+  render();
+  requestAnimationFrame(() => app?.querySelector('[data-action="close-shelf-signup-prompt"]')?.focus());
+}
+
+function closeShelfSignupPrompt(restoreFocus = true) {
+  if (!state.shelfSignupPromptOpen) return;
+  const focusKey = state.shelfSignupPromptFocusKey;
+  state.shelfSignupPromptFocusKey = '';
+  state.shelfSignupPromptOpen = false;
+  render();
+  if (restoreFocus && focusKey) {
+    requestAnimationFrame(() => {
+      const trigger = [...(app?.querySelectorAll('[data-shelf-prompt-focus]') || [])]
+        .find((element) => element.dataset.shelfPromptFocus === focusKey);
+      trigger?.focus();
+    });
+  }
 }
 
 function renderHome() {
@@ -978,10 +1024,10 @@ function renderMySpaceShelfCard(shelf) {
 }
 
 function renderShelfPreviewCard(number) {
-  return `<article class="shelf-preview-card" aria-label="Shelf ${number} visual preview">
-    <div class="shelf-preview-cover" aria-hidden="true"><span class="shelf-preview-art">${icon('sparkle', 27)}</span></div>
-    <div class="shelf-preview-caption"><span class="shelf-preview-title">Shelf ${number}</span><span class="shelf-preview-tag">Layout preview</span></div>
-  </article>`;
+  return `<button class="shelf-preview-card" type="button" data-action="open-shelf-signup-prompt" data-shelf-prompt-focus="shelf-${number}" data-testid="button-open-shelf-preview-${number}" aria-label="Shelf ${number} preview. Join Stillroom to create your first Shelf.">
+    <span class="shelf-preview-cover" aria-hidden="true"><span class="shelf-preview-art">${icon('sparkle', 27)}</span></span>
+    <span class="shelf-preview-caption"><span class="shelf-preview-title">Shelf ${number}</span><span class="shelf-preview-tag">Layout preview</span></span>
+  </button>`;
 }
 
 function renderPublicShelves(ownerId, heading = 'Public Shelves') {
@@ -1000,7 +1046,7 @@ function renderShelves() {
   const loading = state.shelfLoading ? `<p class="shelf-loading" role="status">Updating your Shelves…</p>` : '';
   if (!account) {
     return `<section class="my-space-page visitor-my-space">
-      <div class="page-heading-row shelf-page-heading"><div><p class="eyebrow">Collected by you</p><h1 class="page-title">My Space</h1><p class="page-subtitle">A personal place for the posts you want to revisit, private or public.</p></div><button class="primary-button" type="button" data-action="create-shelf">${icon('plus', 15)} Create a Shelf</button></div>
+      <div class="page-heading-row shelf-page-heading"><div><p class="eyebrow">Collected by you</p><h1 class="page-title">My Space</h1><p class="page-subtitle">A personal place for the posts you want to revisit, private or public.</p></div><button class="primary-button" type="button" data-action="open-shelf-signup-prompt" data-shelf-prompt-focus="create" data-testid="button-create-shelf-visitor">${icon('plus', 15)} Create a Shelf</button></div>
       <p class="shelf-preview-note">These cards preview the layout only. Join to create Shelves that belong to your account.</p>
       <div class="shelf-preview-grid">${[1, 2, 3, 4].map(renderShelfPreviewCard).join('')}</div>
     </section>`;
@@ -2539,7 +2585,13 @@ app?.addEventListener('submit', (event) => {
 });
 
 app?.addEventListener('click', (event) => {
-  const target = event.target instanceof Element ? event.target.closest('[data-action], [data-route]') : null;
+  const clickedElement = event.target instanceof Element ? event.target : null;
+  const shelfSignupBackdrop = clickedElement?.closest('.shelf-signup-backdrop');
+  if (shelfSignupBackdrop && clickedElement === shelfSignupBackdrop) {
+    closeShelfSignupPrompt();
+    return;
+  }
+  const target = clickedElement?.closest('[data-action], [data-route]') || null;
   if (!target) return;
   if (target.matches('[data-route]')) {
     event.preventDefault();
@@ -2568,6 +2620,16 @@ app?.addEventListener('click', (event) => {
     return;
   }
   if (action === 'join') beginRegistration(target.dataset.role || null);
+  else if (action === 'open-shelf-signup-prompt') openShelfSignupPrompt(target.dataset.shelfPromptFocus || 'create');
+  else if (action === 'close-shelf-signup-prompt') closeShelfSignupPrompt();
+  else if (action === 'join-from-shelf-signup-prompt') {
+    const role = target.dataset.role;
+    if (role === 'Fan' || role === 'Artist') {
+      state.shelfSignupPromptOpen = false;
+      state.shelfSignupPromptFocusKey = '';
+      beginRegistration(role);
+    }
+  }
   else if (action === 'choose-role') {
     state.draft.role = target.dataset.role;
     state.errors.role = '';
@@ -2816,11 +2878,36 @@ app?.addEventListener('click', (event) => {
   }
 });
 
+window.addEventListener('keydown', (event) => {
+  if (!state.shelfSignupPromptOpen) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeShelfSignupPrompt();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const modal = app?.querySelector('.shelf-signup-modal');
+  const buttons = modal?.querySelectorAll('button:not(:disabled)');
+  const first = buttons?.[0];
+  const last = buttons?.[buttons.length - 1];
+  if (!modal || !first || !last) return;
+  const focusIsOutside = !modal.contains(document.activeElement);
+  if ((event.shiftKey && (document.activeElement === first || focusIsOutside))
+    || (!event.shiftKey && (document.activeElement === last || focusIsOutside))) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  }
+});
+
 window.addEventListener('popstate', () => {
   if (state.loading) cancelRegistration();
   if (state.boardLoading) cancelBoardOperation();
   if (state.shelfLoading) cancelShelfOperation();
   state.route = getRoute();
+  if (state.route !== '/shelves') {
+    state.shelfSignupPromptOpen = false;
+    state.shelfSignupPromptFocusKey = '';
+  }
   render();
 });
 
