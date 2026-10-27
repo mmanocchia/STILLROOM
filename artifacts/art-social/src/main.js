@@ -3,10 +3,9 @@ import './index.css';
 const app = document.querySelector('#app');
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const navItems = [
-  { path: '/home', label: 'Home', icon: 'home' },
+  { path: '/home', label: 'Feed', icon: 'home' },
   { path: '/explore', label: 'Explore', icon: 'explore' },
-  { path: '/artists', label: 'My Artists', icon: 'artists' },
-  { path: '/shelves', label: 'Shelves', icon: 'shelves' },
+  { path: '/shelves', label: 'My Space', icon: 'shelves' },
   { path: '/profile', label: 'Profile', icon: 'profile' },
 ];
 
@@ -455,6 +454,8 @@ function renderConfirmation() {
 function navLink(item, currentRoute) {
   const active = item.path === currentRoute
     || (item.path === '/home' && currentRoute === '/')
+    || (item.path === '/home' && currentRoute === '/artists')
+    || (item.path === '/home' && currentRoute.startsWith('/artists/'))
     || (item.path === '/artists' && currentRoute.startsWith('/artists/'))
     || (item.path === '/explore' && (currentRoute.startsWith('/board/') || currentRoute.startsWith('/post/')))
     || (item.path === '/shelves' && currentRoute.startsWith('/shelves/'))
@@ -463,13 +464,17 @@ function navLink(item, currentRoute) {
 }
 
 function renderShell(content, pageTitle) {
+  const account = activeAccount();
   const nav = navItems.map((item) => navLink(item, state.route)).join('');
   const searchControl = `<button class="icon-button" type="button" data-action="open-search" aria-label="Search artists, boards, and posts">${icon('search', 17)}<span class="search-label">Search</span></button>`;
+  const accountControls = account
+    ? `<a class="icon-button profile-shortcut" href="${hrefFor('/profile')}" data-route="/profile" aria-label="Open profile">${icon('profile', 17)}<span class="account-handle">@${escapeHTML(account.username)}</span></a><button class="logout-button" type="button" data-action="logout" aria-label="Log out">${icon('logout', 15)}<span>Log out</span></button>`
+    : `<button class="primary-button join-nav-button" type="button" data-action="join"><span>Join / Sign Up</span>${icon('arrow', 14)}</button>`;
   return `<div class="paper-grain app-shell">
     <header class="app-topnav">
       <div class="app-topnav-brand">${brand()}</div>
       <nav class="main-nav" aria-label="Main navigation">${nav}</nav>
-      <div class="app-nav-actions">${searchControl}<a class="icon-button profile-shortcut" href="${hrefFor('/profile')}" data-route="/profile" aria-label="Open profile">${icon('profile', 17)}</a><button class="logout-button" type="button" data-action="logout" aria-label="Log out">${icon('logout', 15)}<span>Log out</span></button></div>
+      <div class="app-nav-actions">${searchControl}${accountControls}</div>
     </header>
     <div class="app-main">
       <header class="topbar"><span class="topbar-title">${escapeHTML(pageTitle)}</span></header>
@@ -481,6 +486,13 @@ function renderShell(content, pageTitle) {
 
 function renderEmpty(title, copy = '') {
   return `<div class="empty-state"><div class="empty-state-inner"><span class="empty-icon">${icon('bookmark', 17)}</span><p class="empty-title">${title}</p>${copy ? `<p class="empty-copy">${copy}</p>` : ''}</div></div>`;
+}
+
+function renderAccountGate(eyebrow, title, copy) {
+  return `<section class="account-gate"><p class="eyebrow">${escapeHTML(eyebrow)}</p><h1 class="page-title">${escapeHTML(title)}</h1><p class="page-subtitle">${escapeHTML(copy)}</p>
+    ${renderEmpty('This space is ready for you.', 'Create a temporary Fan or Artist account to make it yours.')}
+    <div class="account-gate-actions"><button class="primary-button" type="button" data-action="join">Join / Sign Up ${icon('arrow', 14)}</button></div>
+  </section>`;
 }
 
 function renderShelfPicker() {
@@ -517,8 +529,13 @@ function renderHome() {
     ? 'Fan posts from every Artist Board, newest first.'
     : account?.role === 'Fan'
       ? 'Only posts from Artists you have added to My Artists.'
-      : 'A private feed available to Fan accounts.';
-  const status = state.postStatus?.userId === account?.id
+      : account?.role === 'Artist'
+        ? 'A private feed available to Fan accounts.'
+        : 'Sign up to build a private feed from the artists you follow.';
+  const manageLink = !selected && account
+    ? `<a class="home-manage-link" href="${hrefFor('/artists')}" data-route="/artists">${account.role === 'Artist' ? 'Manage my board' : 'Manage My Artists'} ${icon('arrow', 13)}</a>`
+    : '';
+  const status = account && state.postStatus?.userId === account.id
     ? `<p class="success-banner" role="status">${icon('check', 15)}${escapeHTML(state.postStatus.message)}</p>`
     : '';
   const pendingStatus = state.postPublishing && state.pendingPost?.authorId === account?.id
@@ -528,7 +545,9 @@ function renderHome() {
   if (items.length) {
     content = `<div class="post-list home-feed">${items.map(renderFeedItem).join('')}</div>`;
   } else if (selected) {
-    content = `${renderEmpty('Nothing here yet. Discover artists and start collecting.')}<div class="home-empty-explore"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore artists ${icon('arrow', 14)}</a></div>`;
+    content = `${renderEmpty('Nothing here yet. Discover artists and start collecting.')}<div class="home-empty-explore"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore Artists ${icon('arrow', 14)}</a></div>`;
+  } else if (!account) {
+    content = `${renderEmpty('Join to make this feed yours.', 'Your My Artists feed is private to your account.')}<div class="empty-action"><button class="quiet-button" type="button" data-action="join" data-role="Fan">Join as Fan ${icon('arrow', 14)}</button></div>`;
   } else if (!hasFollowedArtists) {
     const title = account?.role === 'Fan' ? "You haven't connected with any artists yet." : 'No artists in My Artists yet.';
     const copy = account?.role === 'Fan' ? 'Follow an artist from their board to see posts here.' : 'My Artists is a private list available to Fan accounts.';
@@ -536,8 +555,8 @@ function renderHome() {
   } else {
     content = `${renderEmpty('No posts from your artists yet.', 'When they share something, it will appear here.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/explore')}" data-route="/explore">Explore more artists ${icon('arrow', 14)}</a></div>`;
   }
-  return `<section class="home-page"><header class="home-intro"><p class="eyebrow">A quieter kind of feed</p><h1 class="page-title">Home</h1><p class="page-subtitle">A place for work that stays with you.</p></header>
-    <div class="home-tab-row"><div class="home-tabs" role="tablist" aria-label="Home feed"><button class="home-tab" type="button" data-action="home-tab" data-tab="for-you" role="tab" aria-selected="${selected}">For You</button><button class="home-tab" type="button" data-action="home-tab" data-tab="my-artists" role="tab" aria-selected="${!selected}">My Artists</button></div><p class="home-tab-context" aria-live="polite">${tabDescription}</p></div>
+  return `<section class="home-page"><header class="home-intro"><p class="eyebrow">A quieter kind of feed</p><h1 class="page-title">Feed</h1><p class="page-subtitle">A place for work that stays with you.</p></header>
+    <div class="home-tab-row"><div class="home-tabs" role="tablist" aria-label="Home feed"><button class="home-tab" type="button" data-action="home-tab" data-tab="for-you" role="tab" aria-selected="${selected}">For You</button><button class="home-tab" type="button" data-action="home-tab" data-tab="my-artists" role="tab" aria-selected="${!selected}">My Artists</button></div>${manageLink}</div><p class="home-tab-context" aria-live="polite">${tabDescription}</p>
     ${status}${pendingStatus}${content}
   </section>`;
 }
@@ -616,7 +635,7 @@ function renderCommentThread(post) {
     <button class="text-button comments-toggle" type="button" data-action="toggle-comments" data-post-id="${escapeHTML(post.id)}" aria-expanded="${expanded}">${expanded ? 'Hide comments' : 'Comments'}</button>
     ${expanded ? `<div class="comment-thread">${status}${pending}
       ${comments.length ? `<ol class="comment-list">${comments.map(renderCommentItem).join('')}</ol>` : `<div class="comment-empty">${renderEmpty('No comments yet.', account?.role === 'Fan' ? 'Be the first to add a note.' : 'There is nothing to read here yet.')}</div>`}
-      ${account?.role === 'Fan' ? renderCommentForm(post) : `<p class="comment-read-only">Fan accounts can add comments.</p>`}
+      ${account?.role === 'Fan' ? renderCommentForm(post) : account?.role === 'Artist' ? `<p class="comment-read-only">Fan accounts can add comments.</p>` : `<button class="text-button guest-action-link" type="button" data-action="join" data-role="Fan">Join as Fan to comment ${icon('arrow', 13)}</button>`}
     </div>` : ''}
   </section>`;
 }
@@ -652,6 +671,7 @@ function renderPostCard(post) {
     <div class="post-actions">
       <button class="text-button shelf-save-button" type="button" data-action="open-shelf-picker" data-post-id="${escapeHTML(post.id)}" ${state.shelfLoading ? 'disabled' : ''}>${icon('bookmark', 13)} Add to Shelf</button>
       ${account?.role === 'Fan' ? `<button class="text-button repost-button" type="button" data-action="toggle-repost" data-post-id="${escapeHTML(post.id)}" ${state.repostPending ? 'disabled' : ''}>${icon('repost', 13)} ${ownRepost ? 'Undo repost' : 'Repost'}</button>` : ''}
+      ${!account ? `<button class="text-button repost-button" type="button" data-action="join" data-role="Fan">${icon('repost', 13)} Join as Fan to repost</button>` : ''}
       ${ownsPost ? (state.postPublishing
         ? `<span class="post-saving" role="status">${state.pendingPost?.postId === post.id ? 'Saving changes…' : 'Please wait for the post to finish publishing…'}</span>`
         : deleteConfirmation
@@ -698,7 +718,8 @@ function renderPostForm(board, editor, draft) {
 
 function renderBoardComposer(board) {
   const account = activeAccount();
-  if (account?.role !== 'Fan') return '';
+  if (!account) return `<div class="post-create-trigger"><button class="primary-button" type="button" data-action="join" data-role="Fan">${icon('plus', 15)} Join as Fan to write a post</button></div>`;
+  if (account.role !== 'Fan') return '';
   const editor = state.postEditor;
   if (editor?.boardId === board.id && editor.authorId === account.id) {
     return renderPostForm(board, editor, state.postDrafts[editor.key]);
@@ -820,6 +841,9 @@ function renderFollowedBoard(board) {
 
 function renderArtists() {
   const account = activeAccount();
+  if (!account) {
+    return renderAccountGate('Your artist space', 'My Artists', 'Connect with artists and manage your Artist Board after joining Stillroom.');
+  }
   if (account?.role === 'Fan') {
     const followed = new Set(followedArtistIds(account.id));
     const boards = state.boards.filter((board) => followed.has(board.ownerId));
@@ -855,7 +879,10 @@ function boardFieldError(field) {
 function renderBoardForm(mode) {
   const account = activeAccount();
   const existing = account?.role === 'Artist' ? boardForOwner(account.id) : null;
-  if (!account || account.role !== 'Artist') {
+  if (!account) {
+    return renderAccountGate('Artist board', 'Create an Artist Board', 'Join as an Artist to create and manage your personal board.');
+  }
+  if (account.role !== 'Artist') {
     return `<section><p class="eyebrow">Artist board</p><h1 class="page-title">Artists only</h1><p class="page-subtitle">Only Artist accounts can create or edit artist boards.</p>${renderEmpty('This action isn’t available for your account type.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/artists')}" data-route="/artists">Back to My Artists</a></div></section>`;
   }
   if (mode === 'create' && existing) {
@@ -947,12 +974,15 @@ function renderPublicShelves(ownerId, heading = 'Public Shelves') {
 
 function renderShelves() {
   const account = activeAccount();
+  if (!account) {
+    return renderAccountGate('Your personal collection', 'My Space', 'Your Shelves are private to your account. Join Stillroom to create and organize them.');
+  }
   const shelves = state.shelves.filter((shelf) => shelf.ownerId === account?.id);
   const status = state.shelfStatus?.ownerId === account?.id && !state.shelfStatus?.shelfId && !state.shelfStatus?.postId
     ? `<p class="success-banner ${state.shelfStatus.kind === 'error' ? 'shelf-error-banner' : ''}" role="${state.shelfStatus.kind === 'error' ? 'alert' : 'status'}">${state.shelfStatus.kind === 'error' ? icon('close', 15) : icon('check', 15)}${escapeHTML(state.shelfStatus.message)}</p>`
     : '';
   const loading = state.shelfLoading ? `<p class="shelf-loading" role="status">Updating your Shelves…</p>` : '';
-  return `<section><div class="page-heading-row shelf-page-heading"><div><p class="eyebrow">Collected by you</p><h1 class="page-title">Shelves</h1><p class="page-subtitle">A place for the posts you want to revisit, private or public.</p></div><button class="primary-button" type="button" data-action="create-shelf" ${state.shelfLoading ? 'disabled' : ''}>${icon('plus', 15)} Create a Shelf</button></div>
+  return `<section><div class="page-heading-row shelf-page-heading"><div><p class="eyebrow">Collected by you</p><h1 class="page-title">My Space</h1><p class="page-subtitle">Your personal Shelves — a place for the posts you want to revisit, private or public.</p></div><button class="primary-button" type="button" data-action="create-shelf" ${state.shelfLoading ? 'disabled' : ''}>${icon('plus', 15)} Create a Shelf</button></div>
     ${status}${loading}
     ${shelves.length ? `<div class="shelf-grid">${shelves.map(renderShelfCard).join('')}</div>` : `${renderEmpty('Your shelves are empty.', 'Create a Shelf to keep fan posts you want to revisit.')}<div class="empty-action"><button class="quiet-button" type="button" data-action="create-shelf" ${state.shelfLoading ? 'disabled' : ''}>Create your first Shelf ${icon('arrow', 14)}</button></div>`}
   </section>`;
@@ -996,6 +1026,9 @@ function shelfFieldError(field) {
 
 function renderShelfForm(mode, shelfId = null) {
   const account = activeAccount();
+  if (!account) {
+    return renderAccountGate('Personal Shelves', mode === 'edit' ? 'Edit a Shelf' : 'Create a Shelf', 'Join Stillroom to create, edit, and organize your personal Shelves.');
+  }
   const existing = shelfId ? state.shelves.find((shelf) => shelf.id === shelfId && shelf.ownerId === account?.id) : null;
   if (!account || (mode === 'edit' && !existing)) {
     return `<section><p class="eyebrow">Personal Shelf</p><h1 class="page-title">Shelf unavailable.</h1>${renderEmpty('You can only edit your own Shelves.')}<div class="empty-action"><a class="quiet-button" href="${hrefFor('/shelves')}" data-route="/shelves">Back to Shelves</a></div></section>`;
@@ -1352,7 +1385,9 @@ function renderProfileSwitcher(account) {
 
 function renderProfile() {
   const account = activeAccount();
-  if (!account) return '';
+  if (!account) {
+    return renderAccountGate('Your corner', 'Profile', 'Create a temporary account to build your own Stillroom profile and switch between accounts.');
+  }
   const content = account.role === 'Artist'
     ? renderArtistProfileContent(account, true)
     : renderFanProfileContent(account, true);
@@ -1618,11 +1653,9 @@ function render() {
     app.innerHTML = renderConfirmation();
     return;
   }
-  if (!account) {
-    state.route = '/';
-    app.innerHTML = renderWelcome();
-    if (getRoute() !== '/') history.replaceState({}, '', hrefFor('/'));
-    return;
+  if (state.route === '/') {
+    state.route = '/home';
+    history.replaceState({}, '', hrefFor('/home'));
   }
 
   const boardRoute = state.route.match(/^\/board\/([^/]+)$/);
@@ -1630,12 +1663,13 @@ function render() {
   const publicProfileRoute = state.route.match(/^\/profile\/([^/]+)$/);
   const shelfEditRoute = state.route.match(/^\/shelves\/([^/]+)\/edit$/);
   const shelfDetailRoute = state.route.match(/^\/shelves\/([^/]+)$/);
-  const specialRoute = ['/artists/new', '/artists/edit', '/shelves/new'].includes(state.route)
+  const specialRoute = ['/artists', '/artists/new', '/artists/edit', '/shelves/new'].includes(state.route)
     || Boolean(boardRoute) || Boolean(postRoute) || Boolean(publicProfileRoute) || Boolean(shelfEditRoute) || Boolean(shelfDetailRoute);
-  if (!navItems.some((item) => item.path === state.route) && state.route !== '/' && !specialRoute) state.route = '/home';
+  if (!navItems.some((item) => item.path === state.route) && !specialRoute) state.route = '/home';
   let content;
   let title;
-  if (state.route === '/explore') { content = renderExplore(); title = 'Explore'; }
+  if (state.route === '/home') { content = renderHome(); title = 'Feed'; }
+  else if (state.route === '/explore') { content = renderExplore(); title = 'Explore'; }
   else if (state.route === '/artists') { content = renderArtists(); title = 'My Artists'; }
   else if (state.route === '/artists/new') { content = renderBoardForm('create'); title = 'Create your board'; }
   else if (state.route === '/artists/edit') { content = renderBoardForm('edit'); title = 'Edit your board'; }
@@ -1677,9 +1711,9 @@ function render() {
     content = renderShelfDetail(shelfId);
     title = shelf?.title || 'Personal Shelf';
   }
-  else if (state.route === '/shelves') { content = renderShelves(); title = 'Shelves'; }
+  else if (state.route === '/shelves') { content = renderShelves(); title = 'My Space'; }
   else if (state.route === '/profile') { content = renderProfile(); title = 'Profile'; }
-  else { content = renderHome(); title = 'Stillroom'; }
+  else { content = renderHome(); title = 'Feed'; }
   app.innerHTML = renderShell(content, title);
   if (postRoute) {
     let postId = postRoute[1];
@@ -2420,6 +2454,25 @@ app?.addEventListener('click', (event) => {
   }
 
   const action = target.dataset.action;
+  const accountRequiredActions = new Set([
+    'open-shelf-picker', 'create-shelf', 'create-shelf-from-picker', 'edit-shelf',
+    'delete-shelf', 'confirm-delete-shelf', 'cancel-delete-shelf', 'remove-post-from-shelf',
+    'create-board', 'edit-own-board', 'toggle-artist-follow',
+    'start-post', 'edit-post', 'resume-post-draft', 'save-post-draft',
+    'discard-current-post-draft', 'discard-saved-post-draft', 'remove-post-media',
+    'toggle-repost', 'confirm-repost', 'cancel-repost',
+    'edit-profile', 'open-username-editor', 'cancel-username-editor',
+    'remove-profile-image', 'cancel-profile-edit',
+  ]);
+  if (!activeAccount() && accountRequiredActions.has(action)) {
+    const role = ['create-board', 'edit-own-board'].includes(action)
+      ? 'Artist'
+      : ['toggle-artist-follow', 'start-post', 'edit-post', 'resume-post-draft', 'toggle-repost', 'confirm-repost'].includes(action)
+        ? 'Fan'
+        : null;
+    beginRegistration(role);
+    return;
+  }
   if (action === 'join') beginRegistration(target.dataset.role || null);
   else if (action === 'choose-role') {
     state.draft.role = target.dataset.role;
@@ -2428,7 +2481,7 @@ app?.addEventListener('click', (event) => {
   } else if (action === 'back-from-register') {
     state.errors = {};
     state.draft = { role: null, name: '', username: '', email: '' };
-    navigate(activeAccount() ? '/profile' : '/');
+    navigate(activeAccount() ? '/profile' : '/home');
   } else if (action === 'open-profile') navigate('/profile', { replace: true });
   else if (action === 'switch-account') {
     cancelProfileOperation();
@@ -2484,7 +2537,7 @@ app?.addEventListener('click', (event) => {
     state.activeAccountId = null;
     state.successAccountId = null;
     state.editingProfile = false;
-    navigate('/');
+    navigate('/home');
   } else if (action === 'home-tab') {
     state.homeTab = target.dataset.tab;
     render();

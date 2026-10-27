@@ -1078,3 +1078,78 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .home-page .home-empty-explore .quiet-button:hover {
   background: #fff;
 }
+
+/* Feed-first shell and visitor access. */
+.app-shell { padding-top: 76px; }
+.app-topnav {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  min-height: 76px;
+  grid-template-columns: minmax(150px, 1fr) auto minmax(220px, 1fr);
+  background: rgba(255, 255, 255, .99);
+}
+.app-nav-actions { gap: 9px; }
+.account-handle {
+  max-width: 112px;
+  overflow: hidden;
+  color: #536a6e;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-nav-actions .profile-shortcut { text-decoration: none; }
+.join-nav-button {
+  min-height: 38px;
+  gap: 7px;
+  padding: 0 13px;
+  border-radius: 7px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.home-tab-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.home-manage-link,
+.guest-action-link {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 6px;
+  color: #258f89;
+  font-size: 10px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.home-manage-link:hover,
+.guest-action-link:hover { color: #19736f; text-decoration: underline; }
+.account-gate { max-width: 720px; margin: 0 auto; }
+.account-gate .empty-state { min-height: 190px; margin-top: 28px; }
+.account-gate-actions { display: flex; justify-content: center; margin-top: 18px; }
+
+@media (max-width: 900px) {
+  .app-topnav { grid-template-columns: auto 1fr auto; }
+}
+@media (max-width: 760px) {
+  .app-shell { padding-top: 116px; }
+  .app-topnav {
+    position: fixed;
+    min-height: 116px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .app-nav-actions { gap: 4px; }
+  .app-nav-actions .profile-shortcut { display: none; }
+  .app-nav-actions .search-label { display: none; }
+  .join-nav-button { min-height: 34px; padding: 0 9px; font-size: 9px; }
+  .home-tab-row { align-items: flex-start; flex-wrap: wrap; gap: 8px 15px; }
+  .home-manage-link { min-height: 30px; }
+  .account-gate .empty-state { min-height: 170px; }
+}
+@media (max-width: 360px) {
+  .join-nav-button { gap: 4px; padding: 0 7px; font-size: 8px; }
+  .app-nav-actions { gap: 1px; }
+}
